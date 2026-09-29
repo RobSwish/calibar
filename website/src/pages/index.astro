@@ -1,0 +1,128 @@
+---
+import Icon from '../components/Icon.astro';
+import '../styles/global.css';
+const download = import.meta.env.PUBLIC_CALIBAR_DOWNLOAD_URL || 'https://github.com/RobSwish/calibar/releases/latest/download/CaliBar.zip';
+const buildDate = new Date();
+const views = [
+  { id: 'calendar', title: 'Your day', heading: 'The whole day.\nOne clear view.', description: 'Move through the month and see each day’s appointments. Times follow your Mac’s settings, and calendar colours stay familiar.', alt: 'CaliBar month view with a daily agenda and Join buttons beside meeting times.' },
+  { id: 'event', title: 'Event details', heading: 'Everything you need.\nAlready together.', description: 'See the time, location, organiser, attendees and notes. Open the event in Apple Calendar from the footer when you need to make a change.', alt: 'CaliBar event details with a video-call button, date, organiser and attendees.' },
+  { id: 'settings', title: 'Your setup', heading: 'Make room\nfor what matters.', description: 'Choose your calendars, date format and meeting browser. Show the next event in the menu bar, or limit upcoming events to today.', alt: 'CaliBar settings for calendar selection and menu-bar display.' },
+];
+const questions = [
+  ['Does CaliBar replace Apple Calendar?', 'No. Create and edit events in Apple Calendar. CaliBar reads those same calendars and keeps your schedule and meeting links available in the menu bar.'],
+  ['Which calendars work with CaliBar?', 'Calendars available in Apple Calendar on your Mac, including iCloud, Google and Exchange. Choose which calendars to show in Settings.'],
+  ['Can I choose a browser for meetings?', 'Yes. Choose an installed browser in Settings → Video call browser, or use your Mac’s default. Both Join buttons use that choice. Meeting websites may still offer to open their dedicated app.'],
+  ['Which video calls can I join?', 'CaliBar recognises supported Zoom, Google Meet, Microsoft Teams, Webex and FaceTime links in event URLs, locations and notes.'],
+  ['What does my Mac need?', 'A Mac with Apple silicon or Intel running macOS 14 or later. Liquid Glass is available on macOS 26 and later, with a frosted appearance on earlier versions.'],
+  ['Is CaliBar free?', 'Yes. Free to download and use. No subscription, ads or CaliBar account.'],
+];
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>CaliBar — Your calendar. Always in reach.</title>
+  <meta name="description" content="A free, native menu-bar companion for Apple Calendar. See your day, join meetings and choose your browser. Built for Mac." />
+  <meta property="og:title" content="CaliBar — Your calendar. Always in reach." />
+  <meta property="og:description" content="Your calendars, upcoming events and video calls. One click away in the Mac menu bar. Free." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" href="data:," />
+  <link rel="canonical" href="https://calibar.app/" />
+  <meta property="og:url" content="https://calibar.app/" />
+  <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="nav-inner wrap">
+      <a class="wordmark" href="#" aria-label="CaliBar home">CaliBar</a>
+      <nav aria-label="Main navigation">
+        <a class="nav-link" href="#a-closer-look">Overview</a>
+        <a class="nav-link" href="#meetings">Meetings</a>
+        <a class="nav-link" href="#questions">Questions</a>
+        <a class="download-button small" href={download}>Download<Icon name="download" size={15}/></a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy wrap">
+        <h1 id="hero-title">Your calendar.<br/><span>Always in reach.</span></h1>
+        <p>A native companion to Apple Calendar.<br/>Your day and your next meeting, right in the menu bar.</p>
+        <a class="download-button" href={download}><Icon name="download" size={19}/>Download for Mac</a>
+        <p class="requirements">Free · macOS 14+ · Apple silicon & Intel</p>
+      </div>
+      <div class="hero-product wrap reveal">
+        <img class="hero-calendar" src="/screenshots/calendar.png" width="736" height="1280" alt="CaliBar’s month calendar and event list, with Join buttons beside video meetings." fetchpriority="high"/>
+      </div>
+    </section>
+
+    <section class="overview wrap section-space" id="a-closer-look" aria-labelledby="overview-title">
+      <h2 class="reveal" id="overview-title">A clear view.<br/><span>Without another window.</span></h2>
+      <div class="product-tour reveal">
+        <div class="tour-tabs" role="tablist" aria-label="Explore CaliBar">
+          {views.map((view, index) => <button id={`tab-${view.id}`} role="tab" aria-selected={index === 0 ? 'true' : 'false'} aria-controls={`panel-${view.id}`} tabindex={index === 0 ? 0 : -1} data-scene={view.id}>{view.title}</button>)}
+        </div>
+        {views.map((view, index) => <div class="tour-panel" id={`panel-${view.id}`} role="tabpanel" aria-labelledby={`tab-${view.id}`} hidden={index !== 0}>
+          <div class="tour-copy"><h3>{view.heading.split('\n').map(line => <span>{line}</span>)}</h3><p>{view.description}</p></div>
+          <div class="tour-image"><img src={`/screenshots/${view.id}.png`} width="736" height="1280" alt={view.alt} loading="lazy"/></div>
+        </div>)}
+      </div>
+    </section>
+
+    <section class="meetings-section section-space" id="meetings" aria-labelledby="meetings-title">
+      <div class="wrap">
+        <h2 class="reveal" id="meetings-title">Your next meeting.<br/><span>One click closer.</span></h2>
+        <div class="meeting-grid">
+          <article class="meeting-feature reveal">
+            <div class="join-illustration" role="img" aria-label="Illustration of a video meeting with a Join button next to its start time">
+              <div class="illustrated-event"><span class="event-colour"></span><div><strong>Design catch-up</strong><span><Icon name="video" size={14}/>Google Meet</span></div><span class="join-example">Join</span><time>10:00</time></div>
+            </div>
+            <h3>Join. Right from the list.</h3>
+            <p>Join directly from your agenda or event details. When the menu bar shows an upcoming video meeting, ⌘-click to join without opening the calendar.</p>
+          </article>
+          <article class="meeting-feature reveal">
+            <div class="browser-illustration">
+              <ul class="browser-logos" role="list" aria-label="Choose an installed browser for video calls">
+                <li><img src="/logos/safari.svg" width="72" height="72" alt="Safari" loading="lazy"/></li>
+                <li><img src="/logos/chrome.svg" width="72" height="72" alt="Google Chrome" loading="lazy"/></li>
+                <li><img src="/logos/firefox.svg" width="72" height="72" alt="Firefox" loading="lazy"/></li>
+                <li><img src="/logos/microsoft-edge.svg" width="72" height="72" alt="Microsoft Edge" loading="lazy"/></li>
+              </ul>
+            </div>
+            <h3>Your browser. Your choice.</h3>
+            <p>Choose the browser your meetings open in. Use your Mac’s default or select another installed browser. CaliBar remembers for the next call.</p>
+          </article>
+        </div>
+        <p class="meeting-providers">Works with supported links from Google Meet, Zoom, Microsoft Teams, Webex and FaceTime.</p>
+      </div>
+    </section>
+
+    <section class="native-section wrap section-space" id="made-for-mac" aria-labelledby="native-title">
+      <div class="native-icons reveal" aria-hidden="true"><div class="calendar-icon"><span data-live-month>{buildDate.toLocaleDateString('en', { month: 'short' }).toUpperCase()}</span><strong data-live-day>{buildDate.getDate()}</strong></div></div>
+      <h2 class="reveal" id="native-title">The calendars you use.<br/><span>Exactly where you need them.</span></h2>
+      <p class="section-description reveal">Keep creating and editing in Apple Calendar. CaliBar reads the same events through macOS, with your calendar colours and accounts already in place.</p>
+      <div class="account-logos reveal" aria-label="Compatible calendar accounts"><span><img src="/logos/icloud.svg" alt="" width="40" height="32"/>iCloud</span><span><img src="/logos/google.svg" alt="" width="30" height="30"/>Google</span><span><img src="/logos/exchange.svg" alt="" width="36" height="32"/>Exchange</span></div>
+    </section>
+
+    <section class="preferences-section section-space" aria-labelledby="preferences-title">
+      <div class="wrap">
+        <h2 class="reveal" id="preferences-title">Just what you need.<br/><span>Set up your way.</span></h2>
+        <div class="feature-grid">
+          <article class="feature-card reveal"><Icon name="calendar" size={28}/><h3>The next event.<br/>At a glance.</h3><p>Show your next appointment beside the date. Keep it to today’s events, or look further ahead.</p><div class="menu-example" aria-hidden="true"><Icon name="calendar" size={16}/><span>29</span><span>Design catch-up</span><strong>10:00</strong></div></article>
+          <article class="feature-card reveal"><Icon name="sliders" size={28}/><h3>Your date.<br/>Your format.</h3><p>Choose how much the menu bar shows: a day number, a fuller date, or just the icon. Times follow your Mac’s locale.</p><div class="date-examples" aria-hidden="true"><span>29</span><span>Tue 29</span><span>29 Sep</span></div></article>
+          <article class="feature-card reveal"><Icon name="lock" size={28}/><h3>Your calendar.<br/>Kept private.</h3><p>No CaliBar account, no ads and no analytics. Calendar accounts stay with macOS. CaliBar reads events and never edits them.</p><div class="privacy-detail"><Icon name="check" size={18}/><span>Read-only calendar access</span></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="faq-section wrap section-space" id="questions" aria-labelledby="faq-title"><h2 id="faq-title">A few answers.</h2><div class="faq-list">{questions.map(([question, answer]) => <details><summary>{question}<Icon name="plus" size={20}/></summary><p>{answer}</p></details>)}</div></section>
+
+    <section class="download-section section-space" aria-labelledby="download-title"><div class="wrap reveal"><h2 id="download-title">Your day.<br/>Ready when you are.</h2><p>CaliBar for Mac. Free.</p><a class="download-button" href={download}><Icon name="download" size={19}/>Download for Mac</a><p class="requirements">macOS 14+ · Apple silicon & Intel</p></div></section>
+  </main>
+  <footer class="site-footer wrap"><a class="wordmark" href="#" aria-label="Back to top">CaliBar</a><p>An independent companion to Apple Calendar.</p><span>Free. Built for Mac.</span></footer>
+  <script>import '../scripts/site.ts';</script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+---
+import {
+  Download04Icon, Calendar03Icon, Tick02Icon, Video01Icon, Sun03Icon,
+  SlidersHorizontalIcon, LockKeyholeIcon, ComputerIcon, Add01Icon,
+  ArrowUpRight01Icon, ArrowDown01Icon,
+} from '@hugeicons/core-free-icons';
+
+interface Props { name: string; size?: number; class?: string; }
+const { name, size = 24, class: className } = Astro.props;
+const icons: Record<string, typeof Calendar03Icon> = {
+  download: Download04Icon, calendar: Calendar03Icon, check: Tick02Icon,
+  video: Video01Icon, sun: Sun03Icon, sliders: SlidersHorizontalIcon,
+  lock: LockKeyholeIcon, mac: ComputerIcon, plus: Add01Icon,
+  arrow: ArrowUpRight01Icon, down: ArrowDown01Icon,
+};
+const nodes = icons[name] ?? Calendar03Icon;
+function svgAttributes(attributes: Record<string, string | number>) {
+  return Object.fromEntries(Object.entries(attributes)
+    .filter(([key]) => key !== 'key')
+    .map(([key, value]) => [key.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`), value]));
+}
+---
+<svg width={size} height={size} viewBox="0 0 24 24" fill="none" class={className} aria-hidden="true" focusable="false">
+  {nodes.map(([Tag, attributes]) => <Tag {...svgAttributes(attributes)}/>)}
+</svg>
