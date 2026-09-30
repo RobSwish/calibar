@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var localClickMonitor: Any?
     private var model: CalendarModel!
     private var displayedMeetingURL: URL?
+    private var statusHoverTimer: Timer?
+    private var statusHoverWidth: CGFloat?
+    private var optionHover = false
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -36,6 +39,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(quit)
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        for (title, selector, key) in [
+            ("Undo", "undo:", "z"), ("Redo", "redo:", "Z"),
+            ("Cut", "cut:", "x"), ("Copy", "copy:", "c"),
+            ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")
+        ] {
+            editMenu.addItem(NSMenuItem(title: title, action: Selector(selector), keyEquivalent: key))
+        }
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
         NSApp.mainMenu = mainMenu
         let demo = ProcessInfo.processInfo.arguments.contains("--demo")
         if demo && ProcessInfo.processInfo.arguments.contains("--dark") {
@@ -55,6 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.image = icon
             button.imagePosition = .imageLeading
             button.setAccessibilityLabel("CaliBar calendar")
+            button.addTrackingArea(NSTrackingArea(rect: .zero,
+                options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+                owner: self, userInfo: nil))
         }
         panel = MenuBarPanel()
         panel.appearance = NSApp.appearance
@@ -90,7 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func togglePanel() {
-        if NSApp.currentEvent?.modifierFlags.contains(.command) == true,
+        let modifiers = NSApp.currentEvent?.modifierFlags ?? NSEvent.modifierFlags
+        if !modifiers.intersection([.command, .option]).isEmpty,
            let url = displayedMeetingURL {
             hidePanel()
             model.joinCall(url)
@@ -115,7 +133,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panel.animator().setFrame(NSRect(origin: NSPoint(x: x, y: y), size: size), display: true)
         }
         panel.makeKeyAndOrderFront(nil)
+        panel.makeMain()
         panel.invalidateShadow()
+        if model.isScreenshot {
+            // AppKit may select the first text field even without SwiftUI focus.
+            // Leave screenshot fixtures free of selection and insertion cursors.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self, self.model.isScreenshot, self.panel.isVisible else { return }
+                self.panel.makeFirstResponder(nil)
+            }
+        }
         statusItem.button?.highlight(true)
         if outsideClickMonitor == nil {
             outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
@@ -145,10 +172,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if buttonFrame.contains(pointer) { return }
         }
         if panel.frame.contains(pointer) { return }
+        var descendants = panel.childWindows ?? []
+        while let child = descendants.popLast() {
+            if child.isVisible && child.frame.contains(pointer) { return }
+            descendants.append(contentsOf: child.childWindows ?? [])
+        }
         hidePanel()
     }
 
     private func hidePanel() {
+        panel?.childWindows?.forEach { $0.close() }
         panel?.orderOut(nil)
         panelTargetX = nil
         statusItem.button?.highlight(false)
@@ -163,20 +196,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        statusHoverTimer?.invalidate()
         hidePanel()
+    }
+
+    @objc(mouseEntered:) func statusMouseEntered(_ event: NSEvent) {
+        statusHoverWidth = statusItem.button?.bounds.width
+        updateOptionHover()
+        statusHoverTimer?.invalidate()
+        // Poll modifier state only while hovering: this also works when another
+        // app is active, without requesting global keyboard-monitoring access.
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateOptionHover() }
+        }
+        statusHoverTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    @objc(mouseExited:) func statusMouseExited(_ event: NSEvent) {
+        endStatusHover()
+    }
+
+    private func updateOptionHover() {
+        guard let button = statusItem.button, let window = button.window,
+              window.convertToScreen(button.convert(button.bounds, to: nil)).contains(NSEvent.mouseLocation) else {
+            endStatusHover()
+            return
+        }
+        let value = NSEvent.modifierFlags.contains(.option)
+        guard value != optionHover else { return }
+        optionHover = value
+        updateStatus()
+    }
+
+    private func endStatusHover() {
+        statusHoverTimer?.invalidate()
+        statusHoverTimer = nil
+        statusHoverWidth = nil
+        optionHover = false
+        updateStatus()
     }
 
     private func updateStatus() {
         let nextEvent = model.nextEvent
         displayedMeetingURL = model.menuBarPreferences.showsNextEvent ? nextEvent?.meeting?.url : nil
-        let title = MenuBarDisplay.title(now: model.now, preferences: model.menuBarPreferences, nextEvent: nextEvent)
-        statusItem.length = title.isEmpty ? NSStatusItem.squareLength : NSStatusItem.variableLength
+        let quickJoin = optionHover && displayedMeetingURL != nil
+        let title = quickJoin ? "Join" : MenuBarDisplay.title(now: model.now, preferences: model.menuBarPreferences, nextEvent: nextEvent)
+        // Keep the hover target stationary when the event title becomes Join.
+        statusItem.length = quickJoin ? max(statusHoverWidth ?? 0, 64) : (title.isEmpty ? NSStatusItem.squareLength : NSStatusItem.variableLength)
         statusItem.button?.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
         statusItem.button?.title = title.isEmpty ? "" : " " + title
         if model.menuBarPreferences.showsNextEvent, let event = nextEvent {
-            let joinHint = displayedMeetingURL == nil ? "" : "\n⌘-click to join"
+            let joinHint = displayedMeetingURL == nil ? "" : "\n⌥-click or ⌘-click to join"
             statusItem.button?.toolTip = "\(event.title) · \(event.start.formatted(date: .abbreviated, time: .shortened))\(joinHint)"
-            statusItem.button?.setAccessibilityLabel("CaliBar. Next event: \(event.title), \(event.start.formatted(date: .complete, time: .shortened))")
+            statusItem.button?.setAccessibilityLabel(quickJoin ? "Join \(event.title)" : "CaliBar. Next event: \(event.title), \(event.start.formatted(date: .complete, time: .shortened))")
         } else {
             statusItem.button?.toolTip = "CaliBar — your calendars"
             statusItem.button?.setAccessibilityLabel("CaliBar calendar. \(model.now.formatted(date: .complete, time: .omitted))")
@@ -234,7 +307,9 @@ private final class MenuBarPanel: NSPanel {
     }
 
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
+    // Child dropdowns become key for search and keyboard navigation. Keeping
+    // the calendar as the main window preserves its native active appearance.
+    override var canBecomeMain: Bool { true }
 
     override func cancelOperation(_ sender: Any?) {
         onDismiss?()

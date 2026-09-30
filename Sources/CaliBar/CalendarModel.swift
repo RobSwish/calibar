@@ -22,7 +22,11 @@ final class CalendarModel: ObservableObject {
     @Published var now: Date
     @Published var error: String?
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @Published var eventDraft: EventDraft?
+    @Published private(set) var isSavingEvent = false
+    @Published var creationError: String?
     let isDemo: Bool
+    let isScreenshot: Bool
     let updates: AppUpdater
 
     private let reader = EventReader()
@@ -34,6 +38,7 @@ final class CalendarModel: ObservableObject {
     init(demo: Bool = false, defaults: UserDefaults = .standard) {
         self.defaults = defaults
         isDemo = demo
+        isScreenshot = demo && ProcessInfo.processInfo.arguments.contains("--screenshot")
         updates = AppUpdater(enabled: !demo)
         let date = Date()
         now = date; selectedDate = date; displayedMonth = date
@@ -45,6 +50,13 @@ final class CalendarModel: ObservableObject {
         if demo {
             calendars = DemoData.calendars
             events = DemoData.events(relativeTo: date)
+            if ProcessInfo.processInfo.arguments.contains("--demo-add") {
+                beginEvent()
+                if isScreenshot {
+                    eventDraft?.title = "Design workshop"
+                    eventDraft?.location = "Studio, London"
+                }
+            }
         } else {
             NotificationCenter.default.publisher(for: .EKEventStoreChanged)
                 .debounce(for: .milliseconds(250), scheduler: DispatchQueue.main)
@@ -75,6 +87,61 @@ final class CalendarModel: ObservableObject {
         MenuBarDisplay.nextEvent(in: visibleEvents, now: now, todayOnly: menuBarPreferences.nextEventTodayOnly)
     }
     var days: [Date] { CalendarDates.monthDays(containing: displayedMonth) }
+
+    var writableCalendars: [CalendarInfo] { calendars.filter(\.allowsContentModifications) }
+
+    func beginEvent() {
+        guard eventDraft == nil else { return }
+        var draft = EventDraft(day: selectedDate)
+        let candidates = writableCalendars
+        draft.calendarID = candidates.first(where: { $0.isDefault })?.id
+            ?? candidates.first(where: { !excludedIDs.contains($0.id) })?.id
+            ?? candidates.first?.id ?? ""
+        if let choice = candidates.first(where: { $0.id == draft.calendarID }),
+           let availability = choice.supportedAvailabilities.first { draft.availability = availability }
+        eventDraft = draft
+        creationError = nil
+    }
+
+    func saveEvent() async -> CalendarEvent? {
+        guard !isSavingEvent, let draft = eventDraft else { return nil }
+        guard ready else { creationError = EventCreationError.accessDenied.localizedDescription; return nil }
+        guard let calendar = writableCalendars.first(where: { $0.id == draft.calendarID }) else {
+            creationError = EventCreationError.calendarUnavailable.localizedDescription; return nil
+        }
+        if let message = draft.validationMessage { creationError = message; return nil }
+        isSavingEvent = true
+        creationError = nil
+        defer { isSavingEvent = false }
+        do {
+            let event: CalendarEvent
+            if isDemo {
+                // Preview saves stay in memory and never request access or touch EventKit.
+                event = CalendarEvent(id: UUID().uuidString, title: draft.title, start: draft.savedStart,
+                    end: draft.savedEnd, isAllDay: draft.isAllDay, calendar: calendar,
+                    location: draft.location, notes: draft.notes,
+                    url: EventDraft.webURL(draft.meetingURL) ?? EventDraft.webURL(draft.url))
+            } else {
+                event = try await reader.create(draft)
+            }
+            // Invalidate any refresh that began before the save, so it cannot erase the new row.
+            generation += 1
+            refreshTask?.cancel()
+            isLoading = false
+            events.removeAll { $0.id == event.id }
+            events.append(event)
+            excludedIDs.remove(calendar.id)
+            if !isDemo { defaults.set(Array(excludedIDs), forKey: "excludedCalendars") }
+            selectedDate = event.start
+            displayedMonth = event.start
+            eventDraft = nil
+            refresh()
+            return event
+        } catch {
+            creationError = error.localizedDescription
+            return nil
+        }
+    }
 
     func setMenuBarDateStyle(_ style: MenuBarDateStyle) {
         menuBarPreferences.dateStyle = style
@@ -288,9 +355,9 @@ extension CalendarInfo {
 
 enum DemoData {
     static let calendars: [CalendarInfo] = [
-        CalendarInfo(id: "work", title: "Work", sourceID: "google", sourceName: "Google", red: 0.25, green: 0.48, blue: 0.92),
-        CalendarInfo(id: "home", title: "Personal", sourceID: "icloud", sourceName: "iCloud", red: 0.62, green: 0.34, blue: 0.85),
-        CalendarInfo(id: "family", title: "Family", sourceID: "icloud", sourceName: "iCloud", red: 0.27, green: 0.67, blue: 0.42)
+        CalendarInfo(id: "work", title: "Work", sourceID: "google", sourceName: "Google", red: 0.25, green: 0.48, blue: 0.92, allowsContentModifications: true, supportedAvailabilities: [.busy, .free], isDefault: true),
+        CalendarInfo(id: "home", title: "Personal", sourceID: "icloud", sourceName: "iCloud", red: 0.62, green: 0.34, blue: 0.85, allowsContentModifications: true, supportedAvailabilities: [.busy, .free]),
+        CalendarInfo(id: "family", title: "Family", sourceID: "icloud", sourceName: "iCloud", red: 0.27, green: 0.67, blue: 0.42, allowsContentModifications: true)
     ]
 
     static func events(relativeTo date: Date) -> [CalendarEvent] {

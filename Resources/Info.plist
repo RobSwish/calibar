@@ -27,7 +27,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>CaliBar shows your calendars and event details in the menu bar, so you can see your day and join video calls. It never changes your events.</string>
+	<string>CaliBar shows your calendars in the menu bar and adds events when you choose to save them.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SUAutomaticallyUpdate</key>

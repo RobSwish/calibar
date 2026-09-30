@@ -4,12 +4,12 @@ import '../styles/global.css';
 const download = import.meta.env.PUBLIC_CALIBAR_DOWNLOAD_URL || 'https://github.com/RobSwish/calibar/releases/latest/download/CaliBar.zip';
 const buildDate = new Date();
 const views = [
-  { id: 'calendar', title: 'Your day', heading: 'The whole day.\nOne clear view.', description: 'Move through the month and see each day’s appointments. Times follow your Mac’s settings, and calendar colours stay familiar.', alt: 'CaliBar month view with a daily agenda and Join buttons beside meeting times.' },
-  { id: 'event', title: 'Event details', heading: 'Everything you need.\nAlready together.', description: 'See the time, location, organiser, attendees and notes. Open the event in Apple Calendar from the footer when you need to make a change.', alt: 'CaliBar event details with a video-call button, date, organiser and attendees.' },
+  { id: 'calendar', title: 'Your day', heading: 'The whole day.\nOne clear view.', description: 'See each day’s appointments with familiar calendar colours and your Mac’s time format. CaliBar 1.1 adds trackpad swipes between months.', alt: 'CaliBar month view with a daily agenda and Join buttons beside meeting times.' },
+  { id: 'event', title: 'Event details', heading: 'Everything you need.\nAlready together.', description: 'See the time, location, invitation responses and notes. Hover over an invitee to email them, or open the event in Apple Calendar from the footer.', alt: 'CaliBar event details with a video-call button, date, organiser and attendees.' },
   { id: 'settings', title: 'Your setup', heading: 'Make room\nfor what matters.', description: 'Choose your calendars, date format and meeting browser. Show the next event in the menu bar, or limit upcoming events to today.', alt: 'CaliBar settings for calendar selection and menu-bar display.' },
 ];
 const questions = [
-  ['Does CaliBar replace Apple Calendar?', 'No. Create and edit events in Apple Calendar. CaliBar reads those same calendars and keeps your schedule and meeting links available in the menu bar.'],
+  ['Does CaliBar replace Apple Calendar?', 'No. CaliBar keeps your schedule and meeting links in the menu bar. The upcoming 1.1 update also lets you add events there. Use Apple Calendar to edit existing events or add invitations, attachments and travel time.'],
   ['Which calendars work with CaliBar?', 'Calendars available in Apple Calendar on your Mac, including iCloud, Google and Exchange. Choose which calendars to show in Settings.'],
   ['Can I choose a browser for meetings?', 'Yes. Choose an installed browser in Settings → Video call browser, or use your Mac’s default. Both Join buttons use that choice. Meeting websites may still offer to open their dedicated app.'],
   ['Which video calls can I join?', 'CaliBar recognises supported Zoom, Google Meet, Microsoft Teams, Webex and FaceTime links in event URLs, locations and notes.'],
@@ -24,10 +24,22 @@ const questions = [
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#ffffff" />
   <title>CaliBar — Your calendar. Always in reach.</title>
-  <meta name="description" content="A free, native menu-bar companion for Apple Calendar. See your day, join meetings and choose your browser. Built for Mac." />
+  <meta name="description" content="A free, native menu-bar companion for Apple Calendar. See your day, join meetings and choose your browser. Event creation is coming in version 1.1. Built for Mac." />
   <meta property="og:title" content="CaliBar — Your calendar. Always in reach." />
-  <meta property="og:description" content="Your calendars, upcoming events and video calls. One click away in the Mac menu bar. Free." />
+  <meta property="og:description" content="A free, native menu-bar companion for Apple Calendar. See your day, join meetings and choose your browser. Built for Mac." />
   <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="CaliBar" />
+  <meta property="og:locale" content="en_GB" />
+  <meta property="og:image" content="https://calibar.app/social/calibar-hero.png" />
+  <meta property="og:image:type" content="image/png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="CaliBar — Your calendar. Always in reach. A preview of the Mac calendar and daily agenda with Join buttons." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="CaliBar — Your calendar. Always in reach." />
+  <meta name="twitter:description" content="A free, native menu-bar companion for Apple Calendar. See your day, join meetings and choose your browser. Built for Mac." />
+  <meta name="twitter:image" content="https://calibar.app/social/calibar-hero.png" />
+  <meta name="twitter:image:alt" content="CaliBar — Your calendar. Always in reach. A preview of the Mac calendar and daily agenda with Join buttons." />
   <link rel="icon" href="data:," />
   <link rel="canonical" href="https://calibar.app/" />
   <meta property="og:url" content="https://calibar.app/" />
@@ -40,6 +52,7 @@ const questions = [
       <a class="wordmark" href="#" aria-label="CaliBar home">CaliBar</a>
       <nav aria-label="Main navigation">
         <a class="nav-link" href="#a-closer-look">Overview</a>
+        <a class="nav-link" href="#add-events">Add events</a>
         <a class="nav-link" href="#meetings">Meetings</a>
         <a class="nav-link" href="#questions">Questions</a>
         <a class="download-button small" href={download}>Download<Icon name="download" size={15}/></a>
@@ -72,6 +85,19 @@ const questions = [
       </div>
     </section>
 
+    <section class="creation-section section-space" id="add-events" aria-labelledby="creation-title">
+      <div class="creation-panel wrap reveal">
+        <div class="creation-copy">
+          <h2 id="creation-title">Make a plan.<br/><span>Right here.</span></h2>
+          <p class="creation-shortcut">Coming in CaliBar 1.1.</p>
+          <p>Click + or press ⌘N to add an appointment without leaving the menu bar.</p>
+          <p>Choose a calendar, set the time, and add a location or meeting link. Set repeats and alerts, then save to the calendars you already use.</p>
+          <p class="creation-shortcut">Ready to save? Press ⌘Return.</p>
+        </div>
+        <div class="creation-image"><img src="/screenshots/adding.png" width="736" height="1280" alt="CaliBar’s new event editor with calendar selection, a location, dates, time zone, repeat and alert options." loading="lazy"/></div>
+      </div>
+    </section>
+
     <section class="meetings-section section-space" id="meetings" aria-labelledby="meetings-title">
       <div class="wrap">
         <h2 class="reveal" id="meetings-title">Your next meeting.<br/><span>One click closer.</span></h2>
@@ -81,7 +107,7 @@ const questions = [
               <div class="illustrated-event"><span class="event-colour"></span><div><strong>Design catch-up</strong><span><Icon name="video" size={14}/>Google Meet</span></div><span class="join-example">Join</span><time>10:00</time></div>
             </div>
             <h3>Join. Right from the list.</h3>
-            <p>Join directly from your agenda or event details. When the menu bar shows an upcoming video meeting, ⌘-click to join without opening the calendar.</p>
+            <p>Join directly from your agenda or event details. ⌘-click an upcoming video meeting in the menu bar to join without opening the calendar. In CaliBar 1.1, you can also hold Option over the menu item to reveal Join, then click.</p>
           </article>
           <article class="meeting-feature reveal">
             <div class="browser-illustration">
@@ -103,7 +129,7 @@ const questions = [
     <section class="native-section wrap section-space" id="made-for-mac" aria-labelledby="native-title">
       <div class="native-icons reveal" aria-hidden="true"><div class="calendar-icon"><span data-live-month>{buildDate.toLocaleDateString('en', { month: 'short' }).toUpperCase()}</span><strong data-live-day>{buildDate.getDate()}</strong></div></div>
       <h2 class="reveal" id="native-title">The calendars you use.<br/><span>Exactly where you need them.</span></h2>
-      <p class="section-description reveal">Keep creating and editing in Apple Calendar. CaliBar reads the same events through macOS, with your calendar colours and accounts already in place.</p>
+      <p class="section-description reveal">Your calendars, colours and accounts are already in place through macOS. Keep creating and editing in Apple Calendar, with event creation inside CaliBar coming in version 1.1.</p>
       <div class="account-logos reveal" aria-label="Compatible calendar accounts"><span><img src="/logos/icloud.svg" alt="" width="40" height="32"/>iCloud</span><span><img src="/logos/google.svg" alt="" width="30" height="30"/>Google</span><span><img src="/logos/exchange.svg" alt="" width="36" height="32"/>Exchange</span></div>
     </section>
 
@@ -111,9 +137,9 @@ const questions = [
       <div class="wrap">
         <h2 class="reveal" id="preferences-title">Just what you need.<br/><span>Set up your way.</span></h2>
         <div class="feature-grid">
-          <article class="feature-card reveal"><Icon name="calendar" size={28}/><h3>The next event.<br/>At a glance.</h3><p>Show your next appointment beside the date. Keep it to today’s events, or look further ahead.</p><div class="menu-example" aria-hidden="true"><Icon name="calendar" size={16}/><span>29</span><span>Design catch-up</span><strong>10:00</strong></div></article>
+          <article class="feature-card reveal"><Icon name="calendar" size={28}/><h3>The next event.<br/>At a glance.</h3><p>Show your next appointment beside the date. Keep it to today’s events, or look further ahead.</p><div class="menu-example" aria-hidden="true"><span data-live-day>{buildDate.getDate()}</span><span>Design catch-up</span><strong>10:00</strong></div></article>
           <article class="feature-card reveal"><Icon name="sliders" size={28}/><h3>Your date.<br/>Your format.</h3><p>Choose how much the menu bar shows: a day number, a fuller date, or just the icon. Times follow your Mac’s locale.</p><div class="date-examples" aria-hidden="true"><span>29</span><span>Tue 29</span><span>29 Sep</span></div></article>
-          <article class="feature-card reveal"><Icon name="lock" size={28}/><h3>Your calendar.<br/>Kept private.</h3><p>No CaliBar account, no ads and no analytics. Calendar accounts stay with macOS. CaliBar reads events and never edits them.</p><div class="privacy-detail"><Icon name="check" size={18}/><span>Read-only calendar access</span></div></article>
+          <article class="feature-card reveal"><Icon name="lock" size={28}/><h3>Your calendar.<br/>Kept private.</h3><p>No CaliBar account, no ads and no analytics. Manage calendar access in your Mac’s System Settings.</p><div class="privacy-detail"><Icon name="check" size={18}/><span>Your calendars stay with macOS</span></div></article>
         </div>
       </div>
     </section>

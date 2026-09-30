@@ -22,6 +22,7 @@ public struct CalendarParticipant: Identifiable, Sendable {
     public let address: String
     public let status: ParticipationStatus
     public let isOrganizer: Bool
+    public let emailURL: URL?
 
     public init(url: URL, name: String? = nil, status: ParticipationStatus = .unknown, isOrganizer: Bool = false) {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
@@ -31,6 +32,14 @@ public struct CalendarParticipant: Identifiable, Sendable {
         self.id = (email ?? url.absoluteString).lowercased()
         self.status = status
         self.isOrganizer = isOrganizer
+        if let email, email.contains("@"), !email.contains(where: { $0.isNewline }) {
+            var mail = URLComponents()
+            mail.scheme = "mailto"
+            mail.path = email
+            self.emailURL = mail.url
+        } else {
+            self.emailURL = nil
+        }
     }
 
     private init(copying participant: Self, status: ParticipationStatus, isOrganizer: Bool) {
@@ -38,6 +47,7 @@ public struct CalendarParticipant: Identifiable, Sendable {
         self.address = participant.address
         self.status = status
         self.isOrganizer = isOrganizer
+        self.emailURL = participant.emailURL
     }
 
     public static func ordered(organizer: Self?, attendees: [Self]) -> [Self] {

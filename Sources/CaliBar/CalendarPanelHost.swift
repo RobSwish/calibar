@@ -39,6 +39,16 @@ final class CalendarPanelHost<Content: View>: NSViewController {
         }
     }
 
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        // Native alerts add their dimming view beside the hosted content.
+        // Round the window's enclosing view too, so that overlay cannot fill
+        // the transparent corners outside the glass surface.
+        if let windowFrame = view.window?.contentView?.superview {
+            clipContent(in: windowFrame)
+        }
+    }
+
     private func clipContent(in container: NSView) {
         // The effect rounds its surface; also clip the hosted content so it
         // cannot cover the glass with square corners.

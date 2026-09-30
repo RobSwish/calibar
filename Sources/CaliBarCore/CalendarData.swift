@@ -8,10 +8,17 @@ public struct CalendarInfo: Identifiable, Sendable {
     public let red: Double
     public let green: Double
     public let blue: Double
+    public let allowsContentModifications: Bool
+    public let supportedAvailabilities: [EventAvailability]
+    public let isDefault: Bool
 
-    public init(id: String, title: String, sourceID: String, sourceName: String, red: Double, green: Double, blue: Double) {
+    public init(id: String, title: String, sourceID: String, sourceName: String, red: Double, green: Double, blue: Double, allowsContentModifications: Bool = false,
+                supportedAvailabilities: [EventAvailability] = [], isDefault: Bool = false) {
         self.id = id; self.title = title; self.sourceID = sourceID; self.sourceName = sourceName
         self.red = red; self.green = green; self.blue = blue
+        self.allowsContentModifications = allowsContentModifications
+        self.supportedAvailabilities = supportedAvailabilities
+        self.isDefault = isDefault
     }
 }
 
@@ -48,6 +55,12 @@ public struct CalendarEvent: Identifiable, Sendable {
 }
 
 public enum CalendarDates {
+    /// Normalize macOS EventKit's inclusive all-day end into the app's half-open interval.
+    public static func exclusiveEnd(_ end: Date, isAllDay: Bool, calendar: Calendar = .current) -> Date {
+        guard isAllDay, calendar.startOfDay(for: end) != end else { return end }
+        return calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: end))!
+    }
+
     public static func monthDays(containing date: Date, calendar: Calendar = .current) -> [Date] {
         guard let month = calendar.dateInterval(of: .month, for: date) else { return [] }
         let offset = (calendar.component(.weekday, from: month.start) - calendar.firstWeekday + 7) % 7

@@ -36,7 +36,8 @@ public actor EventReader {
         guard Self.access == .allowed else { return nil }
         if refreshSources { store.refreshSourcesIfNecessary() }
         let calendars = store.calendars(for: .event)
-        let infos = calendars.map(Self.info).sorted {
+        let defaultID = store.defaultCalendarForNewEvents?.calendarIdentifier
+        let infos = calendars.map { Self.info($0, isDefault: $0.calendarIdentifier == defaultID) }.sorted {
             ($0.sourceName, $0.title) < ($1.sourceName, $1.title)
         }
         let byID = Dictionary(uniqueKeysWithValues: infos.map { ($0.id, $0) })
@@ -49,7 +50,7 @@ public actor EventReader {
                   let start = event.startDate, let end = event.endDate else { return nil }
             // Recurring occurrences share an event identifier; include the occurrence date.
             let id = "\(calendar.id)|\(event.calendarItemIdentifier)|\(start.timeIntervalSinceReferenceDate)"
-            return CalendarEvent(id: id, title: event.title ?? "Untitled event", start: start, end: end,
+            return CalendarEvent(id: id, title: event.title ?? "Untitled event", start: start, end: CalendarDates.exclusiveEnd(end, isAllDay: event.isAllDay),
                                  isAllDay: event.isAllDay, calendar: calendar, location: event.location,
                                  notes: event.notes, url: event.url, organizer: event.organizer.map(Self.participant),
                                  attendees: event.attendees?.map(Self.participant) ?? [],
@@ -57,6 +58,25 @@ public actor EventReader {
                                      start: start, isRecurring: event.hasRecurrenceRules, isAllDay: event.isAllDay))
         }
         return CalendarSnapshot(calendars: infos, events: events)
+    }
+
+    public func create(_ draft: EventDraft) throws -> CalendarEvent {
+        guard Self.access == .allowed else { throw EventCreationError.accessDenied }
+        guard let calendar = store.calendar(withIdentifier: draft.calendarID),
+              calendar.allowsContentModifications, !calendar.isSubscribed,
+              calendar.allowedEntityTypes.contains(.event) else { throw EventCreationError.calendarUnavailable }
+        let event = try draft.makeEvent(in: store)
+        event.calendar = calendar
+        if calendar.supportedEventAvailabilities.contains(draft.availability.mask) {
+            event.availability = draft.availability.eventKitValue
+        }
+        try store.save(event, span: .thisEvent, commit: true)
+        let start = event.startDate!
+        return CalendarEvent(id: "\(calendar.calendarIdentifier)|\(event.calendarItemIdentifier)|\(start.timeIntervalSinceReferenceDate)",
+            title: event.title, start: start, end: CalendarDates.exclusiveEnd(event.endDate, isAllDay: event.isAllDay), isAllDay: event.isAllDay,
+            calendar: Self.info(calendar), location: event.location, notes: event.notes, url: event.url,
+            appleCalendarURL: AppleCalendarLink.url(identifier: event.calendarItemIdentifier, start: start,
+                isRecurring: event.hasRecurrenceRules, isAllDay: event.isAllDay))
     }
 
     private static func participant(_ participant: EKParticipant) -> CalendarParticipant {
@@ -74,10 +94,13 @@ public actor EventReader {
         return CalendarParticipant(url: participant.url, name: participant.name, status: status)
     }
 
-    private static func info(_ calendar: EKCalendar) -> CalendarInfo {
+    private static func info(_ calendar: EKCalendar, isDefault: Bool = false) -> CalendarInfo {
         let color = calendar.cgColor.flatMap { NSColor(cgColor: $0)?.usingColorSpace(.sRGB) } ?? .systemBlue
         return CalendarInfo(id: calendar.calendarIdentifier, title: calendar.title,
                             sourceID: calendar.source.sourceIdentifier, sourceName: calendar.source.title,
-                            red: color.redComponent, green: color.greenComponent, blue: color.blueComponent)
+                            red: color.redComponent, green: color.greenComponent, blue: color.blueComponent,
+                            allowsContentModifications: calendar.allowsContentModifications && !calendar.isSubscribed,
+                            supportedAvailabilities: EventAvailability.allCases.filter { calendar.supportedEventAvailabilities.contains($0.mask) },
+                            isDefault: isDefault)
     }
 }

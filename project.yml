@@ -11,8 +11,8 @@ settings:
     SWIFT_VERSION: '6.0'
     CODE_SIGN_STYLE: Manual
     MACOSX_DEPLOYMENT_TARGET: '14.0'
-    MARKETING_VERSION: '1.0.0'
-    CURRENT_PROJECT_VERSION: '1'
+    MARKETING_VERSION: '1.1.0'
+    CURRENT_PROJECT_VERSION: '2'
 targets:
   CaliBarCore:
     type: framework
@@ -36,7 +36,7 @@ targets:
         CFBundleVersion: '$(CURRENT_PROJECT_VERSION)'
         LSUIElement: true
         LSApplicationCategoryType: public.app-category.productivity
-        NSCalendarsFullAccessUsageDescription: CaliBar shows your calendars and event details in the menu bar, so you can see your day and join video calls. It never changes your events.
+        NSCalendarsFullAccessUsageDescription: CaliBar shows your calendars in the menu bar and adds events when you choose to save them.
         NSPrincipalClass: NSApplication
         SUFeedURL: https://github.com/RobSwish/calibar/releases/latest/download/appcast.xml
         SUPublicEDKey: l+aK0Dl/NWveXhofTh9NDewLaSMbH2zIcpqNn+B2Kj4=

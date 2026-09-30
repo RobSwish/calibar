@@ -22,13 +22,24 @@ struct CalendarPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showingSettings {
-                CalendarSettings(model: model) { showingSettings = false }
-            } else if !model.ready {
-                WelcomeView(model: model)
-            } else {
-                eventNavigation
+            ZStack {
+                if let draft = model.eventDraft {
+                    EventEditor(model: model, draft: draft, close: { selectedEventID = nil }, saved: { selectedEventID = $0.id })
+                        .transition(eventTransition)
+                } else if showingSettings {
+                    CalendarSettings(model: model) { showingSettings = false }
+                        .transition(eventTransition)
+                } else if !model.ready {
+                    WelcomeView(model: model)
+                        .transition(eventTransition)
+                } else {
+                    eventNavigation
+                        .transition(eventTransition)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            .animation(.easeInOut(duration: reduceMotion ? 0.1 : 0.15), value: showingSettings)
             footer
                 .overlay(alignment: .top) {
                     Rectangle()
@@ -46,6 +57,10 @@ struct CalendarPanel: View {
                 .allowsHitTesting(false)
         }
         .tint(.red)
+        // This transient panel remains active while one of its dropdowns owns
+        // keyboard focus. Do not fade the form into its inactive appearance.
+        .environment(\.controlActiveState, .active)
+        .animation(.easeInOut(duration: reduceMotion ? 0.1 : 0.15), value: model.eventDraft != nil)
         .task(id: model.isLoading) {
             if model.isLoading {
                 refreshIndicatorStarted = .now
@@ -143,7 +158,7 @@ struct CalendarPanel: View {
                                     .buttonStyle(JoinCallButtonStyle())
                                     .help(model.isDemo ? "Joining is disabled for preview events" : "Join on \(meeting.provider)")
                                     .accessibilityLabel("Join \(event.title)")
-                                    .disabled(model.isDemo)
+                                    .disabled(model.isDemo && !model.isScreenshot)
                                     .frame(width: 44)
                                     .padding(.trailing, eventTimeColumnWidth + 18)
                                 }
@@ -165,6 +180,10 @@ struct CalendarPanel: View {
                 .id(model.selectedDate)
             }
         }
+        .background(CalendarMonthSwipeArea(
+            isEnabled: selectedEventID == nil && !showingSettings && model.eventDraft == nil,
+            moveMonth: { model.moveMonth($0) }
+        ))
     }
 
     private var dayTitle: String {
@@ -190,7 +209,16 @@ struct CalendarPanel: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 4) {
+            if !showingSettings && model.eventDraft == nil {
+                Button { model.beginEvent(); selectedEventID = nil } label: {
+                    Image(systemName: "plus").foregroundStyle(footerIconColor)
+                        .frame(width: 24, height: 24).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).disabled(!model.ready)
+                .keyboardShortcut("n")
+                .help("New event (⌘N)").accessibilityLabel("New event")
+            }
             if refreshIndicatorStarted != nil {
                 ProgressView()
                     .controlSize(.small)
@@ -198,41 +226,44 @@ struct CalendarPanel: View {
                     .transition(eventTransition)
             }
             Spacer()
-            if model.isDemo { Text("Preview").font(.system(size: 10)).foregroundStyle(.tertiary) }
+            if model.isDemo && !model.isScreenshot { Text("Preview").font(.system(size: 10)).foregroundStyle(.tertiary) }
             Button { model.openCalendar(event: footerEvent) } label: {
                 Image(systemName: "arrow.up.forward.app").foregroundStyle(footerIconColor)
+                    .frame(width: 24, height: 24).contentShape(Rectangle())
             }
                 .buttonStyle(.plain)
+                .disabled(model.eventDraft != nil)
                 .help(footerEvent == nil ? "Open Apple Calendar" : "Open event in Apple Calendar")
                 .accessibilityLabel(footerEvent == nil ? "Open Apple Calendar" : "Open event in Apple Calendar")
             Menu {
                 Button("Settings…") { selectedEventID = nil; showingSettings = true }
+                    .disabled(model.eventDraft != nil)
                     .keyboardShortcut(",")
                 Divider()
                 Button("Refresh Calendars", systemImage: "arrow.clockwise") { model.refresh(remote: true) }
                     .keyboardShortcut("r")
                     .disabled(!model.ready)
-                Button("Open Apple Calendar") { model.openCalendar() }
                 Divider()
                 CheckForUpdatesButton(updater: model.updates)
                 Divider()
                 Button("Quit CaliBar") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
             } label: {
                 Image(systemName: "ellipsis.circle").foregroundStyle(footerIconColor)
+                    .frame(width: 24, height: 24).contentShape(Rectangle())
             }
                 .menuStyle(.button).buttonStyle(.plain)
                 .menuIndicator(.hidden).fixedSize().accessibilityLabel("More options")
                 .tint(footerIconColor)
         }
         .font(.system(size: 12)).foregroundStyle(.secondary)
-        .padding(.horizontal, 20).frame(height: 44)
+        .padding(.horizontal, 14).frame(height: 44)
         .animation(.easeInOut(duration: reduceMotion ? 0.1 : 0.15), value: refreshIndicatorStarted != nil)
     }
 
     private var footerIconColor: Color { Color(nsColor: .secondaryLabelColor) }
 
     private var footerEvent: CalendarEvent? {
-        guard !showingSettings, model.ready, let id = selectedEventID else { return nil }
+        guard model.eventDraft == nil, !showingSettings, model.ready, let id = selectedEventID else { return nil }
         return model.visibleEvents.first { $0.id == id }
     }
 }
@@ -427,6 +458,53 @@ private struct JoinCallButtonStyle: ButtonStyle {
     }
 }
 
+private struct EventParticipantRow: View {
+    let participant: CalendarParticipant
+    let symbol: String
+    let color: Color
+    @State private var hovering = false
+    @FocusState private var emailFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var showsEmailButton: Bool { hovering || emailFocused }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 14))
+                .foregroundStyle(color)
+                .frame(width: 16)
+                .accessibilityHidden(true)
+            Text(participant.address + (participant.isOrganizer ? " (organiser)" : ""))
+                .font(.system(size: 13))
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+            if let emailURL = participant.emailURL {
+                Link(destination: emailURL) {
+                    Image(systemName: "envelope")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(JoinCallButtonStyle())
+                .focused($emailFocused)
+                .opacity(showsEmailButton ? 1 : 0)
+                .allowsHitTesting(showsEmailButton)
+                .accessibilityLabel("Email \(participant.address)")
+                .help("Email \(participant.address)")
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 24)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: reduceMotion ? 0 : 0.12), value: showsEmailButton)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(participant.address + (participant.isOrganizer ? ", organiser" : ""))
+        .accessibilityValue(participant.status.label)
+        .help(participant.status.label)
+    }
+}
+
 struct EventDetails: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var detailsScrollSpace
@@ -493,7 +571,7 @@ struct EventDetails: View {
                             .font(.system(size: 12, weight: .medium))
                             .buttonStyle(JoinCallButtonStyle())
                             .help(model.isDemo ? "Joining is disabled for preview events" : "Join on \(meeting.url.host ?? meeting.provider)")
-                            .disabled(model.isDemo)
+                            .disabled(model.isDemo && !model.isScreenshot)
                         }.padding(14).background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
                     }
                     VStack(alignment: .leading, spacing: 4) {
@@ -516,24 +594,13 @@ struct EventDetails: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
                     if !event.participants.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
                             ForEach(event.participants) { participant in
-                                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                    Image(systemName: participantSymbol(participant.status))
-                                        .font(.system(size: 14))
-                                        .foregroundStyle(participantColor(participant.status))
-                                        .frame(width: 16)
-                                        .accessibilityHidden(true)
-                                    Text(participant.address + (participant.isOrganizer ? " (organiser)" : ""))
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(.primary)
-                                        .textSelection(.enabled)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                }
-                                .accessibilityElement(children: .ignore)
-                                .accessibilityLabel(participant.address + (participant.isOrganizer ? ", organiser" : ""))
-                                .accessibilityValue(participant.status.label)
-                                .help(participant.status.label)
+                                EventParticipantRow(
+                                    participant: participant,
+                                    symbol: participantSymbol(participant.status),
+                                    color: participantColor(participant.status)
+                                )
                             }
                         }
                     }
@@ -740,7 +807,7 @@ struct CalendarSettings: View {
                             Text("Sync calendars").accessibilityHidden(true)
                             Spacer(minLength: 12)
                             Toggle("Sync calendars", isOn: Binding(get: { model.syncEnabled }, set: { model.setSyncEnabled($0) }))
-                                .labelsHidden().toggleStyle(.switch).tint(.red).disabled(model.isRequesting || model.isDemo)
+                                .labelsHidden().toggleStyle(.switch).tint(.red).disabled(model.isRequesting || (model.isDemo && !model.isScreenshot))
                         }
                         Text("Uses the accounts in Apple Calendar. New calendars appear automatically.")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -757,7 +824,6 @@ struct CalendarSettings: View {
                             }
                         }
                         if model.calendars.isEmpty { Text("No calendars found. Add an account in Apple Calendar.").font(.caption).foregroundStyle(.secondary) }
-                        else { Button("Show All Calendars") { model.selectAllCalendars() }.buttonStyle(.link) }
                     }
                     Divider()
                     HStack {
@@ -772,7 +838,7 @@ struct CalendarSettings: View {
                             .labelsHidden().toggleStyle(.switch).tint(.red)
                     }
                     AutomaticUpdatesToggle(updater: model.updates)
-                    Text("CaliBar reads your calendars on this Mac. Turning syncing off clears events from CaliBar. You can revoke calendar access in System Settings.")
+                    Text("CaliBar shows your calendars and saves events you create on this Mac. Turning syncing off clears events from CaliBar. You can revoke calendar access in System Settings.")
                         .font(.system(size: 11)).foregroundStyle(.secondary).lineSpacing(3)
                     Button("Calendar Privacy Settings") { model.openPrivacySettings() }.buttonStyle(.link)
                 }.padding(.horizontal, 22).padding(.bottom, 20)

@@ -16,6 +16,7 @@ struct CalendarParticipantTests {
         #expect(people.map(\.address) == ["Alex@example.com", "sam@example.com"])
         #expect(people.map(\.status) == [.accepted, .declined])
         #expect(people.map(\.isOrganizer) == [true, false])
+        #expect(people[0].emailURL?.absoluteString == "mailto:Alex@example.com")
     }
 
     @Test func organizerAbsentFromAttendeesKeepsUnknownResponse() {
@@ -32,6 +33,10 @@ struct CalendarParticipantTests {
             url: URL(string: "mailto:alex%2Bwork@example.com?subject=Meeting")!, name: "Alex")
         #expect(participant.address == "alex+work@example.com")
         #expect(participant.id == "alex+work@example.com")
+        let compose = URLComponents(url: participant.emailURL!, resolvingAgainstBaseURL: false)
+        #expect(compose?.scheme == "mailto")
+        #expect(compose?.path == "alex+work@example.com")
+        #expect(compose?.query == nil)
     }
 
     @Test func noOrganizerPreservesAttendeesAndResponses() {
@@ -45,5 +50,6 @@ struct CalendarParticipantTests {
         let participant = CalendarParticipant(url: URL(string: "urn:uuid:123")!, name: "Meeting room")
         #expect(participant.address == "Meeting room")
         #expect(participant.id == "urn:uuid:123")
+        #expect(participant.emailURL == nil)
     }
 }

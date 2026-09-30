@@ -29,3 +29,12 @@
   .hero-copy>p:not(.requirements){font-size:19px;line-height:1.4211026316;letter-spacing:.012em}
   h2,.faq-section h2{font-size:32px;line-height:1.125;letter-spacing:.004em}
 }
+
+.creation-section{background:#f5f5f7}
+.creation-panel{display:grid;grid-template-columns:1.1fr 1fr;align-items:center;gap:90px}
+.creation-copy h2{font-size:56px}
+.creation-copy p{font-size:21px;line-height:1.38;color:var(--muted);margin-top:26px;max-width:460px}
+.creation-copy .creation-shortcut{font-size:15px;margin-top:28px}
+.creation-image{width:100%;max-width:350px;justify-self:center;border-radius:22px;overflow:hidden;box-shadow:0 20px 50px #00000018}
+@media(max-width:1000px){.creation-panel{gap:40px}.creation-copy h2{font-size:48px}.creation-copy p{font-size:19px}}
+@media(max-width:760px){.creation-panel{grid-template-columns:1fr;gap:38px}.creation-copy h2{font-size:40px}.creation-copy p{font-size:19px;max-width:none}.creation-image{max-width:310px}}
