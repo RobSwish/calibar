@@ -26,7 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: CalendarModel!
     private var displayedMeetingURL: URL?
     private var statusHoverTimer: Timer?
-    private var statusHoverWidth: CGFloat?
+    private var statusPresentation: StatusItemPresentation!
     private var optionHover = false
     private var cancellables = Set<AnyCancellable>()
 
@@ -62,17 +62,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.action = #selector(togglePanel)
             button.sendAction(on: .leftMouseUp)
             button.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-            let icon = NSImage(systemSymbolName: "calendar", accessibilityDescription: "CaliBar")?
-                .withSymbolConfiguration(.init(pointSize: 16, weight: .regular))
-            icon?.size = NSSize(width: 16, height: 16)
-            icon?.isTemplate = true
-            button.image = icon
-            button.imagePosition = .imageLeading
             button.setAccessibilityLabel("CaliBar calendar")
             button.addTrackingArea(NSTrackingArea(rect: .zero,
                 options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
                 owner: self, userInfo: nil))
         }
+        statusPresentation = StatusItemPresentation(item: statusItem)
         panel = MenuBarPanel()
         panel.appearance = NSApp.appearance
         panel.onDismiss = { [weak self] in self?.hidePanel() }
@@ -201,7 +196,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc(mouseEntered:) func statusMouseEntered(_ event: NSEvent) {
-        statusHoverWidth = statusItem.button?.bounds.width
         updateOptionHover()
         statusHoverTimer?.invalidate()
         // Poll modifier state only while hovering: this also works when another
@@ -214,12 +208,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc(mouseExited:) func statusMouseExited(_ event: NSEvent) {
+        // Fixed sizing changes the button's internal padding, not the item's
+        // screen area. Ignore exits caused only by that internal layout change.
+        if statusItem.button?.window?.frame.contains(NSEvent.mouseLocation) == true { return }
         endStatusHover()
     }
 
     private func updateOptionHover() {
         guard let button = statusItem.button, let window = button.window,
-              window.convertToScreen(button.convert(button.bounds, to: nil)).contains(NSEvent.mouseLocation) else {
+              window.frame.contains(NSEvent.mouseLocation) else {
             endStatusHover()
             return
         }
@@ -232,7 +229,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func endStatusHover() {
         statusHoverTimer?.invalidate()
         statusHoverTimer = nil
-        statusHoverWidth = nil
         optionHover = false
         updateStatus()
     }
@@ -242,10 +238,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         displayedMeetingURL = model.menuBarPreferences.showsNextEvent ? nextEvent?.meeting?.url : nil
         let quickJoin = optionHover && displayedMeetingURL != nil
         let title = quickJoin ? "Join" : MenuBarDisplay.title(now: model.now, preferences: model.menuBarPreferences, nextEvent: nextEvent)
-        // Keep the hover target stationary when the event title becomes Join.
-        statusItem.length = quickJoin ? max(statusHoverWidth ?? 0, 64) : (title.isEmpty ? NSStatusItem.squareLength : NSStatusItem.variableLength)
-        statusItem.button?.imagePosition = title.isEmpty ? .imageOnly : .imageLeading
-        statusItem.button?.title = title.isEmpty ? "" : " " + title
+        statusPresentation.update(title: title, joining: quickJoin)
         if model.menuBarPreferences.showsNextEvent, let event = nextEvent {
             let joinHint = displayedMeetingURL == nil ? "" : "\n⌥-click or ⌘-click to join"
             statusItem.button?.toolTip = "\(event.title) · \(event.start.formatted(date: .abbreviated, time: .shortened))\(joinHint)"
