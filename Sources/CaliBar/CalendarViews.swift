@@ -608,7 +608,12 @@ struct EventDetails: View {
                         Divider()
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Notes").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
-                            Text(notes).font(.system(size: 12)).lineSpacing(4).textSelection(.enabled)
+                            Text(EventNotes.formatted(notes)).font(.system(size: 12)).lineSpacing(4).textSelection(.enabled)
+                                .tint(.blue)
+                                .environment(\.openURL, OpenURLAction { url in
+                                    if MeetingLink.recognize(url) != nil { model.joinCall(url) } else { model.open(url) }
+                                    return .handled
+                                })
                         }
                     }
                     if let url = event.url, url != event.meeting?.url,

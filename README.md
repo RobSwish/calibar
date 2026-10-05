@@ -11,7 +11,7 @@ macOS 14 or later, on Apple silicon and Intel. Unzip CaliBar, move it to Applica
 - Next appointment in the menu bar, with date-format and today-only options.
 - Join video calls from the agenda or event details. Hold Option over the menu-bar item to reveal Join, then click to join its displayed video meeting. Command-click also joins.
 - Choose which installed browser opens your video calls.
-- Event notes, location and invitation responses; open the selected event in Apple Calendar from the footer.
+- Event notes with formatting and clickable links (including HTML notes from Zoom, Google Calendar and similar invitations), location and invitation responses; open the selected event in Apple Calendar from the footer.
 - Times follow your Mac’s locale and 12/24-hour preference.
 - Launch at login and signed Sparkle updates. Refresh calendars with Command-R; Settings with Command-comma.
 - Liquid Glass on macOS 26+, with a frosted panel on earlier versions. Motion respects Reduce Motion.
