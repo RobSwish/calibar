@@ -59,11 +59,22 @@ public struct MenuBarPreferences: Sendable {
 }
 
 public enum MenuBarDisplay {
+    /// The event in progress, if any, otherwise the next one to start.
     public static func nextEvent(in events: [CalendarEvent], now: Date, todayOnly: Bool = false,
                                  calendar: Calendar = .current) -> CalendarEvent? {
+        let timed = events.filter { !$0.isAllDay }
+        // While an appointment is on, keep it in the menu bar until it ends. With
+        // overlaps, the one that began most recently is the one you're likely in.
+        if let current = timed.filter({ isOngoing($0, now: now) }).max(by: { lhs, rhs in
+            if lhs.start != rhs.start { return lhs.start < rhs.start }
+            if lhs.end != rhs.end { return lhs.end > rhs.end }
+            return lhs.id > rhs.id
+        }) {
+            return current
+        }
         let end = todayOnly ? calendar.dateInterval(of: .day, for: now)?.end : calendar.date(byAdding: .day, value: 30, to: now)
         guard let horizon = end else { return nil }
-        return events.filter { !$0.isAllDay && $0.start >= now && $0.start < horizon }
+        return timed.filter { $0.start >= now && $0.start < horizon }
             .min { lhs, rhs in
                 if lhs.start != rhs.start { return lhs.start < rhs.start }
                 return lhs.id < rhs.id
@@ -76,9 +87,15 @@ public enum MenuBarDisplay {
         if preferences.showsNextEvent, let nextEvent {
             let title = nextEvent.title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
             components.append(title.count > 24 ? String(title.prefix(23)) + "…" : title)
-            components.append(eventTime(nextEvent.start, now: now, locale: locale, calendar: calendar))
+            components.append(isOngoing(nextEvent, now: now)
+                ? "until " + eventTime(nextEvent.end, now: now, locale: locale, calendar: calendar)
+                : eventTime(nextEvent.start, now: now, locale: locale, calendar: calendar))
         }
         return components.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    public static func isOngoing(_ event: CalendarEvent, now: Date) -> Bool {
+        event.start <= now && now < event.end
     }
 
     public static func eventTime(_ start: Date, now: Date, locale: Locale = .current, calendar: Calendar = .current) -> String {

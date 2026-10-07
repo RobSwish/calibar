@@ -241,8 +241,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusPresentation.update(title: title, joining: quickJoin)
         if model.menuBarPreferences.showsNextEvent, let event = nextEvent {
             let joinHint = displayedMeetingURL == nil ? "" : "\n⌥-click or ⌘-click to join"
-            statusItem.button?.toolTip = "\(event.title) · \(event.start.formatted(date: .abbreviated, time: .shortened))\(joinHint)"
-            statusItem.button?.setAccessibilityLabel(quickJoin ? "Join \(event.title)" : "CaliBar. Next event: \(event.title), \(event.start.formatted(date: .complete, time: .shortened))")
+            if MenuBarDisplay.isOngoing(event, now: model.now) {
+                statusItem.button?.toolTip = "Now: \(event.title) · until \(event.end.formatted(date: .omitted, time: .shortened))\(joinHint)"
+                statusItem.button?.setAccessibilityLabel(quickJoin ? "Join \(event.title)" : "CaliBar. Current event: \(event.title), until \(event.end.formatted(date: .omitted, time: .shortened))")
+            } else {
+                statusItem.button?.toolTip = "\(event.title) · \(event.start.formatted(date: .abbreviated, time: .shortened))\(joinHint)"
+                statusItem.button?.setAccessibilityLabel(quickJoin ? "Join \(event.title)" : "CaliBar. Next event: \(event.title), \(event.start.formatted(date: .complete, time: .shortened))")
+            }
         } else {
             statusItem.button?.toolTip = "CaliBar — your calendars"
             statusItem.button?.setAccessibilityLabel("CaliBar calendar. \(model.now.formatted(date: .complete, time: .omitted))")

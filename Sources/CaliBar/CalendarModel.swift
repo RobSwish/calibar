@@ -71,9 +71,14 @@ final class CalendarModel: ObservableObject {
             NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)
                 .sink { [weak self] _ in Task { @MainActor in self?.refresh() } }
                 .store(in: &cancellables)
-            Timer.publish(every: 60, on: .main, in: .common).autoconnect()
-                .sink { [weak self] _ in Task { @MainActor in self?.refresh() } }
-                .store(in: &cancellables)
+            // Tick on the minute so the menu bar switches events as they start and end.
+            let nextMinute = Calendar.current.nextDate(after: date, matching: DateComponents(second: 0),
+                                                       matchingPolicy: .nextTime) ?? date.addingTimeInterval(60)
+            let minuteTimer = Timer(fire: nextMinute, interval: 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.refresh() }
+            }
+            RunLoop.main.add(minuteTimer, forMode: .common)
+            AnyCancellable { minuteTimer.invalidate() }.store(in: &cancellables)
             refresh()
         }
     }

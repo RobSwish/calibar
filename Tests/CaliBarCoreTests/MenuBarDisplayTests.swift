@@ -41,7 +41,7 @@ struct MenuBarDisplayTests {
         let next = event("Next", start: now.addingTimeInterval(600))
         let events = [
             event("Later", start: now.addingTimeInterval(3600)),
-            event("Ongoing", start: now.addingTimeInterval(-60)),
+            event("Just ended", start: now.addingTimeInterval(-1800), end: now),
             event("All day", start: now.addingTimeInterval(1), allDay: true),
             next,
             event("Past", start: now.addingTimeInterval(-7200))
@@ -61,7 +61,7 @@ struct MenuBarDisplayTests {
         let tonight = event("Tonight", start: date(times.1))
         let tomorrow = event("Tomorrow", start: date(times.2))
         let excluded = [
-            event("Ongoing", start: now.addingTimeInterval(-60)),
+            event("Finished", start: now.addingTimeInterval(-3600), end: now.addingTimeInterval(-60)),
             event("All day", start: now, allDay: true),
             tomorrow
         ]
@@ -69,6 +69,40 @@ struct MenuBarDisplayTests {
         #expect(MenuBarDisplay.nextEvent(in: excluded, now: now, todayOnly: true, calendar: calendar) == nil)
         #expect(MenuBarDisplay.nextEvent(in: excluded, now: now, calendar: calendar)?.id == "Tomorrow")
         #expect(MenuBarDisplay.nextEvent(in: [tomorrow], now: tomorrow.start, todayOnly: true, calendar: calendar)?.id == "Tomorrow")
+    }
+
+    @Test func ongoingEventStaysUntilItEnds() {
+        let now = date("2026-09-29T10:00:00Z")
+        let ongoing = event("Standup", start: now.addingTimeInterval(-600), end: now.addingTimeInterval(900))
+        let soon = event("Design review", start: now.addingTimeInterval(300))
+        let allDay = event("Holiday", start: now.addingTimeInterval(-3600), end: now.addingTimeInterval(80000), allDay: true)
+        let events = [soon, ongoing, allDay]
+        #expect(MenuBarDisplay.nextEvent(in: events, now: now, calendar: calendar)?.id == "Standup")
+        #expect(MenuBarDisplay.nextEvent(in: events, now: now, todayOnly: true, calendar: calendar)?.id == "Standup")
+        // The moment it ends, the next event takes over.
+        #expect(MenuBarDisplay.nextEvent(in: events, now: ongoing.end, calendar: calendar)?.id == "Design review")
+        // An all-day event alone never counts as "now".
+        #expect(MenuBarDisplay.nextEvent(in: [allDay], now: now, calendar: calendar) == nil)
+    }
+
+    @Test func overlappingEventsPreferTheMostRecentStart() {
+        let now = date("2026-09-29T10:00:00Z")
+        let block = event("Focus block", start: now.addingTimeInterval(-7200), end: now.addingTimeInterval(7200))
+        let call = event("Client call", start: now.addingTimeInterval(-300), end: now.addingTimeInterval(1500))
+        #expect(MenuBarDisplay.nextEvent(in: [block, call], now: now, calendar: calendar)?.id == "Client call")
+    }
+
+    @Test func ongoingTitleShowsWhenItEnds() {
+        let now = date("2026-09-29T10:00:00Z")
+        let ongoing = event("Standup", start: now.addingTimeInterval(-600), end: now.addingTimeInterval(900))
+        var preferences = MenuBarPreferences()
+        preferences.dateStyle = .hidden
+        #expect(MenuBarDisplay.title(now: now, preferences: preferences, nextEvent: ongoing, locale: locale, calendar: calendar)
+            == "Standup · until 11:15")
+        // An event starting exactly now is in progress, not upcoming.
+        let starting = event("Lunch", start: now, end: now.addingTimeInterval(3600))
+        #expect(MenuBarDisplay.title(now: now, preferences: preferences, nextEvent: starting, locale: locale, calendar: calendar)
+            == "Lunch · until 12:00")
     }
 
     @Test func dateCanBeHiddenIndependentlyOfTheEvent() {
