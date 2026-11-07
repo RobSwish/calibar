@@ -13,6 +13,8 @@ public struct EventDraft: Equatable, Sendable {
     public var timeZoneID = TimeZone.current.identifier
     public var location = ""
     public var meetingURL = ""
+    /// Ask Google to create a Meet link when the event is saved.
+    public var addsGoogleMeet = false
     public var url = ""
     public var notes = ""
     public var availability = EventAvailability.busy

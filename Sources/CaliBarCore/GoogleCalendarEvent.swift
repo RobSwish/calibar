@@ -1,0 +1,193 @@
+import Foundation
+
+/// A Google Calendar API event insert that also asks Google to attach a new Meet conference.
+public struct GoogleEventBody: Encodable, Equatable, Sendable {
+    public struct Time: Encodable, Equatable, Sendable {
+        public var date: String?
+        public var dateTime: String?
+        public var timeZone: String?
+    }
+    public struct Reminder: Encodable, Equatable, Sendable {
+        public var method: String
+        public var minutes: Int
+    }
+    public struct Reminders: Encodable, Equatable, Sendable {
+        public var useDefault: Bool
+        public var overrides: [Reminder]
+    }
+    public struct ConferenceData: Encodable, Equatable, Sendable {
+        public struct Key: Encodable, Equatable, Sendable { public var type = "hangoutsMeet" }
+        public struct CreateRequest: Encodable, Equatable, Sendable {
+            public var requestId: String
+            public var conferenceSolutionKey = Key()
+        }
+        public var createRequest: CreateRequest
+    }
+
+    public static let maximumReminderMinutes = 40_320
+    public static let maximumReminders = 5
+
+    public var summary: String
+    public var location: String?
+    public var description: String?
+    public var start: Time
+    public var end: Time
+    public var recurrence: [String]?
+    public var transparency: String?
+    public var reminders: Reminders
+    public var conferenceData: ConferenceData
+
+    /// Returns nil when Google Calendar can’t represent the draft faithfully; the caller then saves
+    /// through Apple Calendar with a standalone Meet link instead, so nothing the user chose is lost.
+    public init?(draft: EventDraft, accountEmail: String, requestID: String = UUID().uuidString) {
+        guard draft.validationMessage == nil, [.busy, .free].contains(draft.availability) else { return nil }
+        guard let reminders = Self.reminders(for: draft.alerts, accountEmail: accountEmail) else { return nil }
+        let calendar = draft.calendar
+        summary = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        location = draft.location.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        var lines = [draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)].filter { !$0.isEmpty }
+        if let url = EventDraft.webURL(draft.url) { lines.append(url.absoluteString) }
+        if let call = EventDraft.webURL(draft.meetingURL) { lines.append("Video call: \(call.absoluteString)") }
+        description = lines.joined(separator: "\n\n").nilIfEmpty
+        if draft.isAllDay {
+            start = Time(date: Self.format(draft.savedStart, "yyyy-MM-dd", calendar.timeZone))
+            end = Time(date: Self.format(draft.savedEnd, "yyyy-MM-dd", calendar.timeZone))
+        } else {
+            // Google has no floating time; a floating draft uses this Mac’s zone, as Apple Calendar does on sync.
+            let zone = calendar.timeZone
+            start = Time(dateTime: Self.format(draft.savedStart, "yyyy-MM-dd'T'HH:mm:ssxxxxx", zone), timeZone: zone.identifier)
+            end = Time(dateTime: Self.format(draft.savedEnd, "yyyy-MM-dd'T'HH:mm:ssxxxxx", zone), timeZone: zone.identifier)
+        }
+        recurrence = draft.recurrence.rrule(start: draft.savedStart, calendar: calendar, isAllDay: draft.isAllDay).map { [$0] }
+        transparency = draft.availability == .free ? "transparent" : "opaque"
+        self.reminders = reminders
+        conferenceData = ConferenceData(createRequest: .init(requestId: requestID))
+    }
+
+    /// Google reminders are relative and before the event only; popups or emails to the calendar owner.
+    static func reminders(for alerts: [EventAlert], accountEmail: String) -> Reminders? {
+        guard alerts.count <= maximumReminders else { return nil }
+        var overrides: [Reminder] = []
+        for alert in alerts {
+            guard alert.timing == .before else { return nil }
+            let minutes = alert.amount * alert.unit.rawValue / 60
+            guard (0...maximumReminderMinutes).contains(minutes) else { return nil }
+            switch alert.action {
+            case .message: overrides.append(Reminder(method: "popup", minutes: minutes))
+            case .email:
+                guard alert.email.caseInsensitiveCompare(accountEmail) == .orderedSame else { return nil }
+                overrides.append(Reminder(method: "email", minutes: minutes))
+            case .sound: return nil
+            }
+        }
+        // CaliBar drafts start without alerts; keep that rather than applying Google’s calendar defaults.
+        return Reminders(useDefault: false, overrides: overrides)
+    }
+
+    static func format(_ date: Date, _ pattern: String, _ zone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = zone
+        formatter.dateFormat = pattern
+        return formatter.string(from: date)
+    }
+}
+
+extension EventRecurrence {
+    private static let weekdayCodes = [1: "SU", 2: "MO", 3: "TU", 4: "WE", 5: "TH", 6: "FR", 7: "SA"]
+
+    /// RFC 5545 RRULE matching `makeRule(calendar:)`, for calendars written through an API rather than EventKit.
+    public func rrule(start: Date, calendar: Calendar, isAllDay: Bool) -> String? {
+        guard frequency != .never else { return nil }
+        let name: String
+        switch frequency { case .daily: name = "DAILY"; case .weekly: name = "WEEKLY"; case .monthly: name = "MONTHLY"; default: name = "YEARLY" }
+        var parts = ["FREQ=\(name)", "INTERVAL=\(max(1, interval))"]
+        if frequency == .weekly && !weekdays.isEmpty {
+            parts.append("BYDAY=" + weekdays.sorted().compactMap { Self.weekdayCodes[$0] }.joined(separator: ","))
+        } else if usesOrdinal && (frequency == .monthly || frequency == .yearly) {
+            if ordinalDay <= 7 {
+                parts.append("BYDAY=\(ordinal)\(Self.weekdayCodes[ordinalDay] ?? "MO")")
+            } else {
+                let days = ordinalDay == 8 ? Array(1...7) : ordinalDay == 9 ? Array(2...6) : [1, 7]
+                parts.append("BYDAY=" + days.compactMap { Self.weekdayCodes[$0] }.joined(separator: ","))
+                parts.append("BYSETPOS=\(ordinal)")
+            }
+        }
+        if frequency == .monthly && !usesOrdinal && !monthDays.isEmpty {
+            parts.append("BYMONTHDAY=" + monthDays.sorted().map(String.init).joined(separator: ","))
+        }
+        if frequency == .yearly {
+            let chosen = months.isEmpty ? [calendar.component(.month, from: start)] : months.sorted()
+            parts.append("BYMONTH=" + chosen.map(String.init).joined(separator: ","))
+        }
+        switch ending {
+        case .never: break
+        case .after: parts.append("COUNT=\(max(1, count))")
+        case .onDate:
+            let lastDay = calendar.startOfDay(for: until)
+            if isAllDay {
+                parts.append("UNTIL=" + GoogleEventBody.format(lastDay, "yyyyMMdd", calendar.timeZone))
+            } else {
+                let last = calendar.date(byAdding: .day, value: 1, to: lastDay)!.addingTimeInterval(-1)
+                parts.append("UNTIL=" + GoogleEventBody.format(last, "yyyyMMdd'T'HHmmss'Z'", TimeZone(identifier: "UTC")!))
+            }
+        }
+        return "RRULE:" + parts.joined(separator: ";")
+    }
+}
+
+public struct GoogleCalendarListEntry: Decodable, Equatable, Sendable {
+    public let id: String
+    public let summary: String?
+    public let summaryOverride: String?
+    public let primary: Bool?
+    public let accessRole: String?
+
+    public init(id: String, summary: String?, summaryOverride: String? = nil, primary: Bool? = nil, accessRole: String? = "owner") {
+        self.id = id; self.summary = summary; self.summaryOverride = summaryOverride; self.primary = primary; self.accessRole = accessRole
+    }
+
+    var isWritable: Bool { ["owner", "writer"].contains(accessRole ?? "") }
+    var names: Set<String> {
+        var values = [summaryOverride, summary].compactMap { $0?.lowercased() }
+        if primary == true { values.append(id.lowercased()) }
+        return Set(values.filter { !$0.isEmpty })
+    }
+}
+
+public struct GoogleCreatedEvent: Decodable, Sendable {
+    struct Conference: Decodable, Sendable {
+        struct EntryPoint: Decodable, Sendable { let entryPointType: String?; let uri: String? }
+        let entryPoints: [EntryPoint]?
+    }
+    public let id: String
+    public let htmlLink: URL?
+    public let hangoutLink: URL?
+    let conferenceData: Conference?
+
+    public var meetURL: URL? {
+        hangoutLink ?? conferenceData?.entryPoints?.first { $0.entryPointType == "video" }?.uri.flatMap(URL.init(string:))
+    }
+}
+
+public enum GoogleCalendarMatch {
+    /// Finds the Google calendar behind an Apple Calendar (CalDAV) calendar. EventKit doesn’t expose
+    /// Google’s calendar IDs, so this matches on the account and calendar names and returns nil when unsure.
+    public static func calendarID(for calendar: CalendarInfo, among calendars: [CalendarInfo],
+                                  google entries: [GoogleCalendarListEntry], accountEmail: String) -> String? {
+        let email = accountEmail.lowercased()
+        let source = calendars.filter { $0.sourceID == calendar.sourceID }
+        let primaryNames = entries.first { $0.primary == true }?.names ?? [email]
+        let sourceName = calendar.sourceName.lowercased()
+        let sourceIsAccount = sourceName == email
+            || source.contains { $0.title.lowercased() == email }
+            || (sourceName.contains("google") && source.contains { primaryNames.contains($0.title.lowercased()) })
+        guard sourceIsAccount else { return nil }
+        let title = calendar.title.lowercased()
+        let matches = entries.filter { $0.isWritable && $0.names.contains(title) }
+        return matches.count == 1 ? matches[0].id : nil
+    }
+}
+
+private extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }

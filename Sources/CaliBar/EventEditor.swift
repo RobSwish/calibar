@@ -138,6 +138,8 @@ struct EventEditor: View {
                 set: { draft.location = $0; draft.meetingURL = "" }
             ), axis: .vertical)
                 .textFieldStyle(.plain).lineLimit(1...3).accessibilityLabel("Location or video call")
+            GoogleMeetToggle(google: model.google, isOn: $draft.addsGoogleMeet)
+                .padding(.top, 2)
         }
         .padding(.leading, 14)
         .overlay(alignment: .leading) {
@@ -574,5 +576,50 @@ private struct EventAlertRow: View {
                 if newCustom { newCustom = false; remove() }
             }
         }
+    }
+}
+
+/// Adds a Google Meet link at save time, connecting a Google account first if needed.
+private struct GoogleMeetToggle: View {
+    @ObservedObject var google: GoogleAccount
+    @Binding var isOn: Bool
+
+    var body: some View {
+        if google.isAvailable {
+            VStack(alignment: .leading, spacing: 4) {
+                if isOn {
+                    HStack(spacing: 6) {
+                        Image(systemName: "video.fill").foregroundStyle(.green).accessibilityHidden(true)
+                        Text("Google Meet").fontWeight(.medium)
+                        Text("Link created when you save").foregroundStyle(.secondary).lineLimit(1)
+                        Spacer(minLength: 4)
+                        Button { isOn = false } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain).accessibilityLabel("Remove Google Meet").help("Remove Google Meet")
+                    }
+                    .accessibilityElement(children: .contain)
+                } else {
+                    Button(action: add) {
+                        HStack(spacing: 6) {
+                            if google.isSigningIn { ProgressView().controlSize(.mini) }
+                            else { Image(systemName: "video.badge.plus").accessibilityHidden(true) }
+                            Text(google.isSigningIn ? "Connecting to Google…" : "Add Google Meet")
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).disabled(google.isSigningIn)
+                    .help(google.isSignedIn ? "Create a Google Meet link when you save this event" : "Connect your Google account to create Meet links")
+                    if let error = google.error {
+                        Text(error).font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+    }
+
+    private func add() {
+        if google.isSignedIn { isOn = true; return }
+        Task { if await google.signIn() { isOn = true } }
     }
 }

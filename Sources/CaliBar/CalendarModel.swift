@@ -28,8 +28,13 @@ final class CalendarModel: ObservableObject {
     let isDemo: Bool
     let isScreenshot: Bool
     let updates: AppUpdater
+    let google: GoogleAccount
 
     private let reader = EventReader()
+    /// Events created through Google’s API, shown until Apple Calendar syncs them down.
+    private var pendingGoogleEvents: [(event: CalendarEvent, created: Date)] = []
+    private var googleWebLinks: [String: URL] = [:]
+    private var googleSyncTask: Task<Void, Never>?
     private let defaults: UserDefaults
     private var refreshTask: Task<Void, Never>?
     private var generation = 0
@@ -40,6 +45,7 @@ final class CalendarModel: ObservableObject {
         isDemo = demo
         isScreenshot = demo && ProcessInfo.processInfo.arguments.contains("--screenshot")
         updates = AppUpdater(enabled: !demo)
+        google = GoogleAccount(demo: demo)
         let date = Date()
         now = date; selectedDate = date; displayedMonth = date
         syncRequested = demo || defaults.bool(forKey: "syncEnabled")
@@ -125,7 +131,10 @@ final class CalendarModel: ObservableObject {
                 event = CalendarEvent(id: UUID().uuidString, title: draft.title, start: draft.savedStart,
                     end: draft.savedEnd, isAllDay: draft.isAllDay, calendar: calendar,
                     location: draft.location, notes: draft.notes,
-                    url: EventDraft.webURL(draft.meetingURL) ?? EventDraft.webURL(draft.url))
+                    url: draft.addsGoogleMeet ? URL(string: "https://meet.google.com/abc-defg-hij")
+                        : EventDraft.webURL(draft.meetingURL) ?? EventDraft.webURL(draft.url))
+            } else if draft.addsGoogleMeet {
+                event = try await saveWithGoogleMeet(draft, calendar: calendar)
             } else {
                 event = try await reader.create(draft)
             }
@@ -143,9 +152,62 @@ final class CalendarModel: ObservableObject {
             refresh()
             return event
         } catch {
+            if error is GoogleError { await google.syncState() }
             creationError = error.localizedDescription
             return nil
         }
+    }
+
+    /// Google calendars get a native Meet conference through Google’s API. Any other calendar, or a draft
+    /// Google can’t represent exactly, is saved through EventKit with a standalone Meet room instead.
+    private func saveWithGoogleMeet(_ draft: EventDraft, calendar: CalendarInfo) async throws -> CalendarEvent {
+        guard let client = google.client else { throw GoogleError.notConfigured }
+        guard let account = await client.account else { throw GoogleError.notSignedIn }
+        if account.canCreateCalendarEvents, let body = GoogleEventBody(draft: draft, accountEmail: account.email) {
+            do {
+                let entries = try await client.calendars()
+                if let calendarID = GoogleCalendarMatch.calendarID(for: calendar, among: calendars, google: entries, accountEmail: account.email) {
+                    let created = try await client.insertEvent(body, calendarID: calendarID)
+                    return trackGoogleEvent(created, draft: draft, calendar: calendar, notes: body.description)
+                }
+            } catch let error as GoogleError where error.isRejection {
+                // Google refused without creating anything; fall back to a standalone link below.
+            }
+        }
+        guard account.canCreateMeetSpaces else { throw GoogleError.missingPermission }
+        var linked = draft
+        linked.meetingURL = try await client.createMeetSpace().absoluteString
+        return try await reader.create(linked)
+    }
+
+    private func trackGoogleEvent(_ created: GoogleCreatedEvent, draft: EventDraft, calendar: CalendarInfo, notes: String?) -> CalendarEvent {
+        let location = draft.location.trimmingCharacters(in: .whitespacesAndNewlines)
+        let event = CalendarEvent(id: "google|\(created.id)|\(draft.savedStart.timeIntervalSinceReferenceDate)",
+            title: draft.title.trimmingCharacters(in: .whitespacesAndNewlines), start: draft.savedStart, end: draft.savedEnd,
+            isAllDay: draft.isAllDay, calendar: calendar, location: location.isEmpty ? nil : location, notes: notes, url: created.meetURL)
+        pendingGoogleEvents.append((event, Date()))
+        if let link = created.htmlLink { googleWebLinks[event.id] = link }
+        googleSyncTask?.cancel()
+        googleSyncTask = Task { [weak self] in
+            // Nudge Apple Calendar to pull the new event from Google rather than waiting for its next sync.
+            for delay in [2, 8, 30, 90] {
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self, !Task.isCancelled, !self.pendingGoogleEvents.isEmpty else { return }
+                self.refresh(remote: true)
+            }
+        }
+        return event
+    }
+
+    private func mergingPendingGoogleEvents(into fetched: [CalendarEvent]) -> [CalendarEvent] {
+        let expiry = Date().addingTimeInterval(-15 * 60)
+        pendingGoogleEvents.removeAll { pending in
+            pending.created < expiry || fetched.contains {
+                $0.calendar.id == pending.event.calendar.id && $0.title == pending.event.title
+                    && abs($0.start.timeIntervalSince(pending.event.start)) < 1
+            }
+        }
+        return fetched + pendingGoogleEvents.map(\.event)
     }
 
     func setMenuBarDateStyle(_ style: MenuBarDateStyle) {
@@ -264,7 +326,7 @@ final class CalendarModel: ObservableObject {
                 return
             }
             calendars = snapshot.calendars
-            events = snapshot.events
+            events = mergingPendingGoogleEvents(into: snapshot.events)
         }
     }
 
@@ -309,6 +371,11 @@ final class CalendarModel: ObservableObject {
     }
 
     func openCalendar(event: CalendarEvent? = nil) {
+        // An event created through Google’s API isn’t in Apple Calendar until it syncs; open it on the web instead.
+        if let event, event.appleCalendarURL == nil, let link = googleWebLinks[event.id], !isDemo {
+            open(link)
+            return
+        }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") else {
             error = "Apple Calendar couldn’t be found on this Mac."
             return

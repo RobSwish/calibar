@@ -13,6 +13,8 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: '14.0'
     MARKETING_VERSION: '1.1.2'
     CURRENT_PROJECT_VERSION: '4'
+    # Google OAuth client ID (iOS type) for Google Meet. Not secret; empty hides the feature. See docs/google-meet.md.
+    GOOGLE_CLIENT_ID: ''
 targets:
   CaliBarCore:
     type: framework
@@ -38,6 +40,7 @@ targets:
         LSApplicationCategoryType: public.app-category.productivity
         NSCalendarsFullAccessUsageDescription: CaliBar shows your calendars in the menu bar and adds events when you choose to save them.
         NSPrincipalClass: NSApplication
+        CaliBarGoogleClientID: '$(GOOGLE_CLIENT_ID)'
         SUFeedURL: https://github.com/RobSwish/calibar/releases/latest/download/appcast.xml
         SUPublicEDKey: l+aK0Dl/NWveXhofTh9NDewLaSMbH2zIcpqNn+B2Kj4=
         SUEnableAutomaticChecks: true
@@ -50,6 +53,7 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.personal-information.calendars: true
+        com.apple.security.network.client: true
         com.apple.security.temporary-exception.mach-lookup.global-name:
           - $(PRODUCT_BUNDLE_IDENTIFIER)-spks
           - $(PRODUCT_BUNDLE_IDENTIFIER)-spki

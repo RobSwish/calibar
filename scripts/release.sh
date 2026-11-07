@@ -31,7 +31,8 @@ xcodebuild -project CaliBar.xcodeproj -scheme CaliBar -configuration Release \
   -destination 'generic/platform=macOS' -archivePath "$release_work/CaliBar.xcarchive" \
   -derivedDataPath "$release_work/DerivedData" CODE_SIGN_IDENTITY="$release_identity" \
   DEVELOPMENT_TEAM="$release_team" MARKETING_VERSION="$release_version" \
-  CURRENT_PROJECT_VERSION="$release_build" 'ARCHS=arm64 x86_64' ONLY_ACTIVE_ARCH=NO archive
+  CURRENT_PROJECT_VERSION="$release_build" 'ARCHS=arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
+  ${GOOGLE_CLIENT_ID:+GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID} archive
 python3 - "$release_work/ExportOptions.plist" "$release_team" <<'PLIST'
 import plistlib,sys
 plistlib.dump(dict(method='developer-id',teamID=sys.argv[2],signingStyle='manual',

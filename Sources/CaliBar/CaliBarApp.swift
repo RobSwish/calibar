@@ -158,7 +158,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func dismissForOutsideClick() {
-        guard panel.isVisible else { return }
+        // Keep the draft on screen while the Google sign-in window is open.
+        guard panel.isVisible, !model.google.isSigningIn else { return }
         let pointer = NSEvent.mouseLocation
         // A status-item mouse-down can reach the global monitor before the
         // button's mouse-up. Let togglePanel handle the whole click once.

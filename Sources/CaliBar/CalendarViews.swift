@@ -836,6 +836,7 @@ struct CalendarSettings: View {
                         Spacer(minLength: 12)
                         videoCallBrowserButton
                     }
+                    GoogleAccountSettings(google: model.google)
                     HStack {
                         Text("Open at Login").accessibilityHidden(true)
                         Spacer(minLength: 12)
@@ -1025,5 +1026,38 @@ private enum EventTitleUnderHeaderKey: PreferenceKey {
 
     static func reduce(value: inout Bool, nextValue: () -> Bool) {
         value = value || nextValue()
+    }
+}
+
+/// Connect or disconnect the Google account used only to create Meet links.
+private struct GoogleAccountSettings: View {
+    @ObservedObject var google: GoogleAccount
+
+    var body: some View {
+        if google.isAvailable {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Google Meet")
+                        if let email = google.email {
+                            Text(email).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        }
+                    }
+                    Spacer(minLength: 12)
+                    if google.isSigningIn {
+                        ProgressView().controlSize(.small).accessibilityLabel("Connecting to Google")
+                    } else if google.isSignedIn {
+                        Button("Disconnect") { google.signOut() }
+                    } else {
+                        Button("Connect Google") { Task { await google.signIn() } }
+                    }
+                }
+                Text("Creates Meet links for events you save. Google calendars get the meeting attached, as in Google Calendar; other calendars get the link in the event.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if let error = google.error {
+                    Text(error).font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
     }
 }
