@@ -65,14 +65,15 @@ public actor GoogleClient {
     public func insertEvent(_ body: GoogleEventBody, calendarID: String) async throws -> GoogleCreatedEvent {
         let id = calendarID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/@"))) ?? calendarID
         var components = URLComponents(string: "https://www.googleapis.com/calendar/v3/calendars/\(id)/events")!
-        // CaliBar never sends invitations; sendUpdates stays "none".
-        components.queryItems = [URLQueryItem(name: "conferenceDataVersion", value: "1"), URLQueryItem(name: "sendUpdates", value: "none")]
+        // Google emails invitees only when the user added some; otherwise nobody is notified.
+        components.queryItems = [URLQueryItem(name: "conferenceDataVersion", value: "1"),
+                                 URLQueryItem(name: "sendUpdates", value: body.sendsInvitations ? "all" : "none")]
         var request = URLRequest(url: components.url!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
         let created: GoogleCreatedEvent = try await send(request)
-        if created.meetURL != nil { return created }
+        if body.conferenceData == nil || created.meetURL != nil { return created }
         // Conference creation is usually immediate but may briefly be pending.
         for delay in [0.5, 1.0, 2.0] {
             try await Task.sleep(for: .seconds(delay))

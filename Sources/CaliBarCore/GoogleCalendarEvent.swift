@@ -1,6 +1,6 @@
 import Foundation
 
-/// A Google Calendar API event insert that also asks Google to attach a new Meet conference.
+/// A Google Calendar API event insert, optionally with invitees and a new Meet conference.
 public struct GoogleEventBody: Encodable, Equatable, Sendable {
     public struct Time: Encodable, Equatable, Sendable {
         public var date: String?
@@ -23,6 +23,9 @@ public struct GoogleEventBody: Encodable, Equatable, Sendable {
         }
         public var createRequest: CreateRequest
     }
+    public struct Attendee: Encodable, Equatable, Sendable {
+        public var email: String
+    }
 
     public static let maximumReminderMinutes = 40_320
     public static let maximumReminders = 5
@@ -35,13 +38,17 @@ public struct GoogleEventBody: Encodable, Equatable, Sendable {
     public var recurrence: [String]?
     public var transparency: String?
     public var reminders: Reminders
-    public var conferenceData: ConferenceData
+    public var attendees: [Attendee]?
+    public var conferenceData: ConferenceData?
 
-    /// Returns nil when Google Calendar can’t represent the draft faithfully; the caller then saves
-    /// through Apple Calendar with a standalone Meet link instead, so nothing the user chose is lost.
+    /// Whether Google should email the invitees (`sendUpdates=all`).
+    public var sendsInvitations: Bool { !(attendees ?? []).isEmpty }
+
+    /// Returns nil when Google Calendar can’t represent the draft faithfully; for a Meet-only draft the
+    /// caller then saves through Apple Calendar with a standalone link, so nothing the user chose is lost.
     public init?(draft: EventDraft, accountEmail: String, requestID: String = UUID().uuidString) {
-        guard draft.validationMessage == nil, [.busy, .free].contains(draft.availability) else { return nil }
-        guard let reminders = Self.reminders(for: draft.alerts, accountEmail: accountEmail) else { return nil }
+        guard draft.validationMessage == nil, Self.unsupportedFeature(in: draft, accountEmail: accountEmail) == nil,
+              let reminders = Self.reminders(for: draft.alerts, accountEmail: accountEmail) else { return nil }
         let calendar = draft.calendar
         summary = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         location = draft.location.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
@@ -61,7 +68,25 @@ public struct GoogleEventBody: Encodable, Equatable, Sendable {
         recurrence = draft.recurrence.rrule(start: draft.savedStart, calendar: calendar, isAllDay: draft.isAllDay).map { [$0] }
         transparency = draft.availability == .free ? "transparent" : "opaque"
         self.reminders = reminders
-        conferenceData = ConferenceData(createRequest: .init(requestId: requestID))
+        let guests = Invitees.merging(draft.invitees, into: [])
+            .filter { $0.caseInsensitiveCompare(accountEmail) != .orderedSame }
+        attendees = guests.isEmpty ? nil : guests.map { Attendee(email: $0) }
+        conferenceData = draft.addsGoogleMeet ? ConferenceData(createRequest: .init(requestId: requestID)) : nil
+    }
+
+    /// Names what Google Calendar can’t store, for the message shown when invitees require Google.
+    public static func unsupportedFeature(in draft: EventDraft, accountEmail: String) -> String? {
+        if ![.busy, .free].contains(draft.availability) { return "“Show as \(draft.availability.rawValue)”" }
+        if draft.alerts.count > maximumReminders { return "more than \(maximumReminders) alerts" }
+        for alert in draft.alerts {
+            if alert.timing != .before { return "alerts after the start or on a set date" }
+            if alert.action == .sound { return "alerts with sound" }
+            if alert.amount * alert.unit.rawValue / 60 > maximumReminderMinutes { return "alerts more than four weeks before" }
+            if alert.action == .email, alert.email.caseInsensitiveCompare(accountEmail) != .orderedSame {
+                return "email alerts to another address"
+            }
+        }
+        return nil
     }
 
     /// Google reminders are relative and before the event only; popups or emails to the calendar owner.
@@ -172,6 +197,17 @@ public struct GoogleCreatedEvent: Decodable, Sendable {
 }
 
 public enum GoogleCalendarMatch {
+    /// A best guess, before Google’s calendar list is available, at whether a calendar is synced from Google.
+    public static func looksLikeGoogle(_ calendar: CalendarInfo, among calendars: [CalendarInfo]) -> Bool {
+        func isGoogleAddress(_ text: String) -> Bool {
+            let value = text.lowercased()
+            return value.hasSuffix("@gmail.com") || value.hasSuffix("@googlemail.com")
+        }
+        let source = calendars.filter { $0.sourceID == calendar.sourceID }
+        return calendar.sourceName.lowercased().contains("google") || isGoogleAddress(calendar.sourceName)
+            || source.contains { isGoogleAddress($0.title) }
+    }
+
     /// Finds the Google calendar behind an Apple Calendar (CalDAV) calendar. EventKit doesn’t expose
     /// Google’s calendar IDs, so this matches on the account and calendar names and returns nil when unsure.
     public static func calendarID(for calendar: CalendarInfo, among calendars: [CalendarInfo],

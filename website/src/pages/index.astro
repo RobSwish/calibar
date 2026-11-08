@@ -9,9 +9,10 @@ const views = [
   { id: 'settings', title: 'Your setup', heading: 'Make room\nfor what matters.', description: 'Choose your calendars, date format and meeting browser. Show the next event in the menu bar, or limit upcoming events to today.', alt: 'CaliBar settings for calendar selection and menu-bar display.' },
 ];
 const questions = [
-  ['Does CaliBar replace Apple Calendar?', 'No. CaliBar keeps your schedule and meeting links in the menu bar, and lets you add events there too. Use Apple Calendar to edit existing events or add invitations, attachments and travel time.'],
+  ['Does CaliBar replace Apple Calendar?', 'No. CaliBar keeps your schedule and meeting links in the menu bar, and lets you add events there too. Use Apple Calendar to edit existing events or add attachments and travel time.'],
   ['Which calendars work with CaliBar?', 'Calendars available in Apple Calendar on your Mac, including iCloud, Google and Exchange. Choose which calendars to show in Settings.'],
   ['Can I choose a browser for meetings?', 'Yes. Choose an installed browser in Settings → Video call browser, or use your Mac’s default. Both Join buttons use that choice. Meeting websites may still offer to open their dedicated app.'],
+  ['Can CaliBar add Google Meet links and invitees?', 'Yes. Connect your Google account in Settings, then choose Add Google Meet when you create an event. On a Google calendar, Google attaches the meeting itself; on iCloud and other calendars, CaliBar adds the Meet link to the event. On Google calendars you can also add invitees, and Google emails their invitations. Connecting Google is optional, and CaliBar only contacts Google once you do.'],
   ['Which video calls can I join?', 'CaliBar recognises supported Zoom, Google Meet, Microsoft Teams, Webex and FaceTime links in event URLs, locations and notes.'],
   ['What does my Mac need?', 'A Mac with Apple silicon or Intel running macOS 14 or later. Liquid Glass is available on macOS 26 and later, with a frosted appearance on earlier versions.'],
   ['Is CaliBar free?', 'Yes. Free to download and use. No subscription, ads or CaliBar account.'],
@@ -24,9 +25,9 @@ const questions = [
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#ffffff" />
   <title>CaliBar — Your calendar. Always in reach.</title>
-  <meta name="description" content="A free, native menu-bar companion for Apple Calendar. See your day, add events, join meetings and choose your browser. Built for Mac." />
+  <meta name="description" content="A free, native menu-bar companion for Apple Calendar. See your day, add events with Google Meet links and invitees, join meetings and choose your browser. Built for Mac." />
   <meta property="og:title" content="CaliBar — Your calendar. Always in reach." />
-  <meta property="og:description" content="A free, native menu-bar companion for Apple Calendar. See your day, add events, join meetings and choose your browser. Built for Mac." />
+  <meta property="og:description" content="A free, native menu-bar companion for Apple Calendar. See your day, add events with Google Meet links and invitees, join meetings and choose your browser. Built for Mac." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="CaliBar" />
   <meta property="og:locale" content="en_GB" />
@@ -37,7 +38,7 @@ const questions = [
   <meta property="og:image:alt" content="CaliBar — Your calendar. Always in reach. A preview of the Mac calendar and daily agenda with Join buttons." />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="CaliBar — Your calendar. Always in reach." />
-  <meta name="twitter:description" content="A free, native menu-bar companion for Apple Calendar. See your day, add events, join meetings and choose your browser. Built for Mac." />
+  <meta name="twitter:description" content="A free, native menu-bar companion for Apple Calendar. See your day, add events with Google Meet links and invitees, join meetings and choose your browser. Built for Mac." />
   <meta name="twitter:image" content="https://calibar.app/social/calibar-hero.png" />
   <meta name="twitter:image:alt" content="CaliBar — Your calendar. Always in reach. A preview of the Mac calendar and daily agenda with Join buttons." />
   <link rel="icon" href="/favicon.ico?v=2" sizes="16x16 32x32 48x48" />
@@ -122,6 +123,7 @@ const questions = [
           <h2 id="creation-title">Make a plan.<br/><span>Right here.</span></h2>
           <p>Click + or press ⌘N to add an appointment without leaving the menu bar.</p>
           <p>Choose a calendar, set the time, and add a location or meeting link. Set repeats and alerts, then save to the calendars you already use.</p>
+          <p>Need a call? Add a Google Meet link with one click. On a Google calendar, add invitees too, and Google sends the invitations.</p>
           <p class="creation-shortcut">Ready to save? Press ⌘Return.</p>
         </div>
         <div class="creation-image"><img src="/screenshots/adding.png?v=1.1.0" width="736" height="1280" alt="CaliBar’s new event editor with calendar selection, a location, dates, time zone, repeat and alert options." loading="lazy"/></div>

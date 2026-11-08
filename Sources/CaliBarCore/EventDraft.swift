@@ -15,6 +15,8 @@ public struct EventDraft: Equatable, Sendable {
     public var meetingURL = ""
     /// Ask Google to create a Meet link when the event is saved.
     public var addsGoogleMeet = false
+    /// Email addresses to invite. Only Google calendars can send invitations; EventKit can’t add attendees.
+    public var invitees: [String] = []
     public var url = ""
     public var notes = ""
     public var availability = EventAvailability.busy

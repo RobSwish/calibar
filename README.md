@@ -8,7 +8,7 @@ macOS 14 or later, on Apple silicon and Intel. Unzip CaliBar, move it to Applica
 
 - Month calendar and daily agenda, with trackpad swipes between months and the calendar colours you already use.
 - Create appointments from the bottom-left plus button (Command-N), inside the menu-bar panel. Choose a writable calendar, dates, time zone, location, video link, notes, availability, custom repeats and alerts. Save with Command-Return.
-- Add Google Meet to new events from the editor. CaliBar creates the Meet link when you save, with no need to open Apple Calendar or Google Calendar. Google calendars get a native Meet conference; other calendars get a standalone Meet link. Optional; see [Google Meet](docs/google-meet.md).
+- Add Google Meet to new events from the editor. CaliBar creates the Meet link when you save, with no need to open Apple Calendar or Google Calendar. Google calendars get a native Meet conference; other calendars get a standalone Meet link. On Google calendars you can also add invitees, and Google emails the invitations. Optional; see [Google Meet and invitations](docs/google-meet.md).
 - Next appointment in the menu bar, with date-format and today-only options.
 - Join video calls from the agenda or event details. Hold Option over the menu-bar item to reveal Join, then click to join its displayed video meeting. Command-click also joins.
 - Choose which installed browser opens your video calls.
@@ -17,13 +17,13 @@ macOS 14 or later, on Apple silicon and Intel. Unzip CaliBar, move it to Applica
 - Launch at login and signed Sparkle updates. Refresh calendars with Command-R; Settings with Command-comma.
 - Liquid Glass on macOS 26+, with a frosted panel on earlier versions. Motion respects Reduce Motion.
 
-CaliBar recognises supported Google Meet, Zoom, Microsoft Teams, Webex and FaceTime links in event URLs, locations and notes. Calendar accounts remain managed by macOS. There is no CaliBar account, advertising or analytics. Automatic update checks contact the GitHub-hosted release feed; turn them off in Settings if preferred. CaliBar contacts Google only after you connect a Google account for Meet links. The connection is stored in the Keychain and removed with Disconnect in Settings.
+CaliBar recognises supported Google Meet, Zoom, Microsoft Teams, Webex and FaceTime links in event URLs, locations and notes. Calendar accounts remain managed by macOS. There is no CaliBar account, advertising or analytics. Automatic update checks contact the GitHub-hosted release feed; turn them off in Settings if preferred. CaliBar contacts Google only after you connect a Google account for Meet links or invitations. The connection is stored in the Keychain and removed with Disconnect in Settings.
 
 ## Event creation
 
 The editor supports timed, all-day and multiday events; floating or named time zones; daily, weekly, monthly and yearly schedules with intervals, weekday/month selections, ordinal patterns and end dates or occurrence counts; multiple relative or absolute alerts (message, sound or email); and availability supported by the selected calendar. Calendar providers may limit alert types and counts.
 
-Apple’s public EventKit API does not support adding invitees or attachments, setting travel time, creating FaceTime or Google Meet links, or creating Open File alerts. CaliBar creates Meet links through Google’s own APIs instead. **Save and open in Apple Calendar** creates the event once and opens it for those additional options. Existing meeting links can be pasted directly into CaliBar. No private APIs or invitation-sending workarounds are used.
+Apple’s public EventKit API does not support adding invitees or attachments, setting travel time, creating FaceTime or Google Meet links, or creating Open File alerts. CaliBar creates Meet links, and invitations on Google calendars, through Google’s own APIs instead. **Save and open in Apple Calendar** creates the event once and opens it for those additional options. Existing meeting links can be pasted directly into CaliBar. No private APIs are used, and iCloud invitations aren’t faked by email.
 
 ## Development
 

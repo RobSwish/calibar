@@ -10,6 +10,7 @@ struct EventEditor: View {
     @State private var repeatBackup: EventRecurrence?
     @State private var newCustomAlertID: UUID?
     @State private var contentUnderHeader = false
+    @State private var inviteeText = ""
     @FocusState private var titleFocused: Bool
     @Namespace private var scrollSpace
     @State private var original: EventDraft
@@ -25,6 +26,9 @@ struct EventEditor: View {
     }
 
     private var selectedCalendar: CalendarInfo? { model.writableCalendars.first { $0.id == draft.calendarID } }
+    private var invitationsAvailable: Bool { model.supportsInvitations(selectedCalendar) }
+    /// Shown for Google calendars, and kept on screen after switching away if it already holds invitees.
+    private var showsInvitees: Bool { invitationsAvailable || !draft.invitees.isEmpty }
     private var canSave: Bool { model.ready && selectedCalendar != nil && draft.validationMessage == nil && !model.isSavingEvent }
     private var editorAnimation: Animation { .easeInOut(duration: reduceMotion ? 0.1 : 0.2) }
     private var alertAnimation: Animation {
@@ -85,7 +89,8 @@ struct EventEditor: View {
                             Label("Save and open in Apple Calendar", systemImage: "arrow.up.forward.app")
                         }
                         .buttonStyle(.plain).foregroundStyle(.primary).disabled(!canSave)
-                        Text("Add invitees, attachments, travel time or a FaceTime link in Apple Calendar.")
+                        Text(showsInvitees ? "Add attachments, travel time or a FaceTime link in Apple Calendar."
+                                           : "Add invitees, attachments, travel time or a FaceTime link in Apple Calendar.")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -95,6 +100,8 @@ struct EventEditor: View {
                 .disabled(model.isSavingEvent)
                 .animation(editorAnimation, value: draft.isAllDay)
                 .animation(editorAnimation, value: draft.calendarID)
+                .animation(editorAnimation, value: showsInvitees)
+                .animation(editorAnimation, value: draft.invitees)
                 .animation(editorAnimation, value: draft.recurrence.frequency)
                 .animation(editorAnimation, value: draft.recurrence.usesOrdinal)
                 .animation(editorAnimation, value: draft.recurrence.ending)
@@ -116,6 +123,7 @@ struct EventEditor: View {
         .onChange(of: draft.calendarID) { _, _ in
             if let values = selectedCalendar?.supportedAvailabilities, !values.contains(draft.availability), let first = values.first { draft.availability = first }
         }
+        .task { await model.google.loadCalendarsIfNeeded() }
         .task {
             guard !model.isScreenshot else { return }
             try? await Task.sleep(for: .milliseconds(180))
@@ -140,6 +148,12 @@ struct EventEditor: View {
                 .textFieldStyle(.plain).lineLimit(1...3).accessibilityLabel("Location or video call")
             GoogleMeetToggle(google: model.google, isOn: $draft.addsGoogleMeet)
                 .padding(.top, 2)
+            if showsInvitees {
+                InviteeField(google: model.google, invitees: $draft.invitees, text: $inviteeText,
+                             warning: invitationsAvailable ? nil : "Invitations need a Google calendar. Choose one, or remove the invitees.")
+                    .padding(.top, 2)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
         }
         .padding(.leading, 14)
         .overlay(alignment: .leading) {
@@ -421,6 +435,16 @@ struct EventEditor: View {
     }
     private func discard() { model.eventDraft = nil; model.creationError = nil; close() }
     private func save(openInCalendar: Bool = false) {
+        // Include an address that was typed but not yet turned into a chip.
+        if showsInvitees, !inviteeText.trimmingCharacters(in: .whitespaces).isEmpty {
+            let parsed = Invitees.parse(inviteeText)
+            draft.invitees = Invitees.merging(parsed.addresses, into: draft.invitees)
+            inviteeText = parsed.leftover
+            guard parsed.leftover.isEmpty else {
+                model.creationError = "“\(parsed.leftover)” isn’t an email address."
+                return
+            }
+        }
         model.eventDraft = draft
         Task { @MainActor in
             if let event = await model.saveEvent() {
@@ -579,6 +603,113 @@ private struct EventAlertRow: View {
     }
 }
 
+/// Email invitees as removable chips. Google sends the invitations when the event is saved.
+private struct InviteeField: View {
+    @ObservedObject var google: GoogleAccount
+    @Binding var invitees: [String]
+    @Binding var text: String
+    let warning: String?
+    @State private var invalid: String?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if google.isSignedIn {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: "person.2").foregroundStyle(.secondary).frame(width: 20, height: 20).accessibilityHidden(true)
+                    FlowLayout(spacing: 4) {
+                        ForEach(invitees, id: \.self) { chip($0) }
+                        TextField(invitees.isEmpty ? "Add invitees" : "Add more", text: $text)
+                            .textFieldStyle(.plain).focused($focused)
+                            .frame(minWidth: 150).frame(height: 20)
+                            .accessibilityLabel("Invitee email addresses")
+                            .onSubmit(commit)
+                            .onChange(of: text) { _, value in
+                                if let last = value.last, ",;".contains(last) { commit() } else { invalid = nil }
+                            }
+                            .onChange(of: focused) { _, isFocused in if !isFocused { commit() } }
+                    }
+                }
+                .help("Google emails an invitation to each person when you save")
+            } else {
+                Button(action: connect) {
+                    HStack(spacing: 6) {
+                        if google.isSigningIn { ProgressView().controlSize(.mini) }
+                        else { Image(systemName: "person.badge.plus").frame(width: 20).accessibilityHidden(true) }
+                        Text(google.isSigningIn ? "Connecting to Google…" : "Add invitees")
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary).disabled(google.isSigningIn)
+                .help("Connect your Google account to send invitations")
+            }
+            // Sign-in errors already show under Add Google Meet.
+            if let message = invalid ?? warning {
+                Text(message).font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func chip(_ address: String) -> some View {
+        HStack(spacing: 3) {
+            Text(address).lineLimit(1).truncationMode(.middle)
+            Button { invitees.removeAll { $0 == address } } label: {
+                Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.secondary)
+                    .frame(width: 14, height: 14).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityLabel("Remove \(address)")
+        }
+        .font(.system(size: 12))
+        .padding(.leading, 8).padding(.trailing, 3).frame(height: 20)
+        .background(.quaternary, in: Capsule())
+        .accessibilityElement(children: .combine)
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+    }
+
+    private func commit() {
+        let parsed = Invitees.parse(text)
+        invitees = Invitees.merging(parsed.addresses, into: invitees)
+        text = parsed.leftover
+        invalid = parsed.leftover.isEmpty ? nil : "“\(parsed.leftover)” isn’t an email address."
+    }
+
+    private func connect() { Task { await google.signIn() } }
+}
+
+/// Lays out chips left to right, wrapping onto new rows.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = arrange(width: proposal.width ?? .infinity, subviews: subviews)
+        return CGSize(width: proposal.width ?? result.width, height: result.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = arrange(width: bounds.width, subviews: subviews)
+        for (subview, frame) in zip(subviews, result.frames) {
+            subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), proposal: ProposedViewSize(frame.size))
+        }
+    }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> (frames: [CGRect], width: CGFloat, height: CGFloat) {
+        var frames: [CGRect] = []
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
+        for (index, subview) in subviews.enumerated() {
+            var size = subview.sizeThatFits(.unspecified)
+            size.width = min(size.width, width)
+            if x > 0, x + size.width > width { x = 0; y += rowHeight + spacing; rowHeight = 0 }
+            // The last item (the text field) stretches to the end of its row.
+            if index == subviews.count - 1, width.isFinite { size.width = max(size.width, width - x) }
+            frames.append(CGRect(x: x, y: y, width: size.width, height: size.height))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return (frames, widest, y + rowHeight)
+    }
+}
+
 /// Adds a Google Meet link at save time, connecting a Google account first if needed.
 private struct GoogleMeetToggle: View {
     @ObservedObject var google: GoogleAccount
@@ -589,7 +720,7 @@ private struct GoogleMeetToggle: View {
             VStack(alignment: .leading, spacing: 4) {
                 if isOn {
                     HStack(spacing: 6) {
-                        Image(systemName: "video.fill").foregroundStyle(.green).accessibilityHidden(true)
+                        Image(systemName: "video.fill").foregroundStyle(.green).frame(width: 20).accessibilityHidden(true)
                         Text("Google Meet").fontWeight(.medium)
                         Text("Link created when you save").foregroundStyle(.secondary).lineLimit(1)
                         Spacer(minLength: 4)
@@ -603,7 +734,7 @@ private struct GoogleMeetToggle: View {
                     Button(action: add) {
                         HStack(spacing: 6) {
                             if google.isSigningIn { ProgressView().controlSize(.mini) }
-                            else { Image(systemName: "video.badge.plus").accessibilityHidden(true) }
+                            else { Image(systemName: "video.badge.plus").frame(width: 20).accessibilityHidden(true) }
                             Text(google.isSigningIn ? "Connecting to Google…" : "Add Google Meet")
                         }
                         .contentShape(Rectangle())

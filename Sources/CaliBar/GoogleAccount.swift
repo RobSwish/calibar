@@ -3,12 +3,14 @@ import AuthenticationServices
 import CaliBarCore
 import SwiftUI
 
-/// The optional Google connection used to create Meet links. CaliBar works fully without it.
+/// The optional Google connection used for Meet links and invitations. CaliBar works fully without it.
 @MainActor
 final class GoogleAccount: NSObject, ObservableObject {
     @Published private(set) var email: String?
     @Published private(set) var isSigningIn = false
     @Published var error: String?
+    /// The signed-in account’s writable Google calendars, used to offer invitees only where they can be sent.
+    @Published private(set) var calendars: [GoogleCalendarListEntry]?
     let client: GoogleClient?
     private let isDemo: Bool
     private var authSession: ASWebAuthenticationSession?
@@ -35,7 +37,16 @@ final class GoogleAccount: NSObject, ObservableObject {
     func syncState() async {
         guard let client else { return }
         email = await client.account?.email
+        if email == nil { calendars = nil }
     }
+
+    /// Fetches the calendar list once per session; failures leave the name-based guess in place.
+    func loadCalendarsIfNeeded() async {
+        guard let client, email != nil, calendars == nil, await client.account?.canCreateCalendarEvents == true else { return }
+        if let entries = try? await client.calendars() { calendars = entries } else { await syncState() }
+    }
+
+    func update(calendars entries: [GoogleCalendarListEntry]) { calendars = entries }
 
     @discardableResult
     func signIn() async -> Bool {
@@ -53,6 +64,8 @@ final class GoogleAccount: NSObject, ObservableObject {
             let code = try configuration.authorizationCode(from: callback, expectedState: state)
             let credentials = try await client.completeSignIn(code: code, verifier: pkce.verifier)
             email = credentials.email
+            calendars = nil
+            Task { await loadCalendarsIfNeeded() }
             return true
         } catch GoogleError.signInCancelled {
             return false
@@ -66,6 +79,7 @@ final class GoogleAccount: NSObject, ObservableObject {
         guard !isDemo else { return }
         email = nil
         error = nil
+        calendars = nil
         Task { await client?.signOut() }
     }
 
@@ -98,8 +112,8 @@ final class GoogleAccount: NSObject, ObservableObject {
         window.title = "Connect Google Account"
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: VStack(spacing: 8) {
-            Text("Sign in to Google to create Meet links").font(.headline)
-            Text("CaliBar only creates events and Meet links you save. You can disconnect in Settings.")
+            Text("Sign in to Google").font(.headline)
+            Text("CaliBar only creates the events, invitations and Meet links you save. You can disconnect in Settings.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }.padding(24).frame(width: 420, height: 160))
         window.center()
