@@ -633,6 +633,8 @@ private struct InviteeField: View {
     @Binding var text: String
     let warning: String?
     @State private var invalid: String?
+    /// Addresses just turned from typed text into pills, which morph in place rather than fading in.
+    @State private var typedAddresses: Set<String> = []
     @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -674,22 +676,13 @@ private struct InviteeField: View {
     }
 
     private func chip(_ address: String) -> some View {
-        HStack(spacing: 3) {
-            Text(address).lineLimit(1).truncationMode(.middle)
-            Button { withAnimation(chipAnimation) { invitees.removeAll { $0 == address } } } label: {
-                Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.secondary)
-                    .frame(width: 14, height: 14).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain).accessibilityLabel("Remove \(address)")
+        InviteeChip(address: address, morphsFromText: !reduceMotion && typedAddresses.contains(address.lowercased()),
+                    animation: chipAnimation) {
+            withAnimation(chipAnimation) { invitees.removeAll { $0 == address } }
         }
-        .font(.system(size: 12))
-        .padding(.leading, 8).padding(.trailing, 3).frame(height: 20)
-        .background(.quaternary, in: Capsule())
-        .accessibilityElement(children: .combine)
-        // New pills grow out of the text field’s leading edge, where the address was typed.
-        .transition(reduceMotion ? .opacity : .asymmetric(
-            insertion: .opacity.combined(with: .scale(scale: 0.6, anchor: .leading)),
-            removal: .opacity.combined(with: .scale(scale: 0.85))))
+        // A typed address becomes its pill in place, so it needs no insertion transition of its own.
+        .transition(.asymmetric(insertion: typedAddresses.contains(address.lowercased()) ? .identity : .opacity,
+                                removal: reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.85))))
     }
 
     /// One spring for the pill, the text field sliding along and the box growing, so they move together.
@@ -698,13 +691,49 @@ private struct InviteeField: View {
     private func commit() {
         let parsed = Invitees.parse(text)
         let merged = Invitees.merging(parsed.addresses, into: invitees)
-        // Clear the typed text first, without animation, so it doesn’t linger beside the new pill.
+        typedAddresses = Set(parsed.addresses.map { $0.lowercased() })
+        // The typed text clears in the same update the pill appears in its place, starting as that same text.
         text = parsed.leftover
         if merged != invitees { withAnimation(chipAnimation) { invitees = merged } }
         invalid = parsed.leftover.isEmpty ? nil : "“\(parsed.leftover)” isn’t an email address."
     }
 
     private func connect() { Task { await google.signIn(hint: accountHint) } }
+}
+
+/// An invitee pill. One made from typed text starts as that text, at the field’s size and position with no
+/// background, then settles into the pill: padding opens, the text eases to pill size, the capsule fades in.
+private struct InviteeChip: View {
+    let address: String
+    let animation: Animation
+    let remove: () -> Void
+    @State private var settled: Bool
+
+    /// The text field’s font is 13pt and the pill’s 12pt; the morph starts at the field’s size.
+    private static let typedScale = 13.0 / 12.0
+
+    init(address: String, morphsFromText: Bool, animation: Animation, remove: @escaping () -> Void) {
+        self.address = address; self.animation = animation; self.remove = remove
+        _settled = State(initialValue: !morphsFromText)
+    }
+
+    var body: some View {
+        HStack(spacing: settled ? 3 : 0) {
+            Text(address).lineLimit(1).truncationMode(.middle)
+                .scaleEffect(settled ? 1 : Self.typedScale, anchor: .leading)
+            Button(action: remove) {
+                Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.secondary)
+                    .frame(width: 14, height: 14).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).accessibilityLabel("Remove \(address)")
+            .frame(width: settled ? 14 : 0).opacity(settled ? 1 : 0).clipped()
+        }
+        .font(.system(size: 12))
+        .padding(.leading, settled ? 8 : 0).padding(.trailing, settled ? 3 : 0).frame(height: 20)
+        .background(Capsule().fill(.quaternary).opacity(settled ? 1 : 0))
+        .accessibilityElement(children: .combine)
+        .onAppear { if !settled { withAnimation(animation) { settled = true } } }
+    }
 }
 
 /// Lays out chips left to right, wrapping onto new rows.
