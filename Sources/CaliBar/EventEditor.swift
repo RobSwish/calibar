@@ -112,7 +112,6 @@ struct EventEditor: View {
                 .animation(editorAnimation, value: draft.isAllDay)
                 .animation(editorAnimation, value: draft.calendarID)
                 .animation(editorAnimation, value: showsInvitees)
-                .animation(editorAnimation, value: draft.invitees)
                 .animation(editorAnimation, value: draft.recurrence.frequency)
                 .animation(editorAnimation, value: draft.recurrence.usesOrdinal)
                 .animation(editorAnimation, value: draft.recurrence.ending)
@@ -173,6 +172,8 @@ struct EventEditor: View {
                 Text(error).font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
         }
+        // Room under the location field, so the calendar colour bar runs a little past it.
+        .padding(.bottom, 4)
         .padding(.leading, 14)
         .overlay(alignment: .leading) {
             Capsule().fill(selectedCalendar?.color ?? .red).frame(width: 4)
@@ -633,6 +634,7 @@ private struct InviteeField: View {
     let warning: String?
     @State private var invalid: String?
     @FocusState private var focused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -674,7 +676,7 @@ private struct InviteeField: View {
     private func chip(_ address: String) -> some View {
         HStack(spacing: 3) {
             Text(address).lineLimit(1).truncationMode(.middle)
-            Button { invitees.removeAll { $0 == address } } label: {
+            Button { withAnimation(chipAnimation) { invitees.removeAll { $0 == address } } } label: {
                 Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.secondary)
                     .frame(width: 14, height: 14).contentShape(Rectangle())
             }
@@ -684,13 +686,21 @@ private struct InviteeField: View {
         .padding(.leading, 8).padding(.trailing, 3).frame(height: 20)
         .background(.quaternary, in: Capsule())
         .accessibilityElement(children: .combine)
-        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        // New pills grow out of the text field’s leading edge, where the address was typed.
+        .transition(reduceMotion ? .opacity : .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.6, anchor: .leading)),
+            removal: .opacity.combined(with: .scale(scale: 0.85))))
     }
+
+    /// One spring for the pill, the text field sliding along and the box growing, so they move together.
+    private var chipAnimation: Animation { reduceMotion ? .easeOut(duration: 0.1) : .snappy(duration: 0.28, extraBounce: 0.04) }
 
     private func commit() {
         let parsed = Invitees.parse(text)
-        invitees = Invitees.merging(parsed.addresses, into: invitees)
+        let merged = Invitees.merging(parsed.addresses, into: invitees)
+        // Clear the typed text first, without animation, so it doesn’t linger beside the new pill.
         text = parsed.leftover
+        if merged != invitees { withAnimation(chipAnimation) { invitees = merged } }
         invalid = parsed.leftover.isEmpty ? nil : "“\(parsed.leftover)” isn’t an email address."
     }
 
