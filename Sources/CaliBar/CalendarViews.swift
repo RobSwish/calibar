@@ -831,6 +831,13 @@ struct CalendarSettings: View {
                         if model.calendars.isEmpty { Text("No calendars found. Add an account in Apple Calendar.").font(.caption).foregroundStyle(.secondary) }
                     }
                     Divider()
+                    if model.ready, !model.writableCalendars.isEmpty {
+                        HStack {
+                            Text("Default calendar").accessibilityHidden(true)
+                            Spacer(minLength: 12)
+                            settingsMenu(model.defaultCalendarName, label: "Default calendar") { defaultCalendarPicker }
+                        }
+                    }
                     HStack {
                         Text("Video call browser").accessibilityHidden(true)
                         Spacer(minLength: 12)
@@ -864,34 +871,35 @@ struct CalendarSettings: View {
             .onAppear { model.refreshBrowsers() }
     }
 
-    @ViewBuilder
     private var videoCallBrowserButton: some View {
-        if #available(macOS 26, *) {
-            videoCallBrowserMenu
-                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 8))
-        } else {
-            videoCallBrowserMenu
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        }
+        settingsMenu(model.videoCallBrowserName, label: "Video call browser") { videoCallBrowserPicker }
     }
 
-    private var videoCallBrowserMenu: some View {
-        Menu {
-            Picker("Video call browser", selection: Binding(get: { model.videoCallBrowserID }, set: { model.setVideoCallBrowser($0) })) {
-                Text("Default browser").tag("")
-                Divider()
-                ForEach(model.availableBrowsers) { browser in
-                    Text(browser.name).tag(browser.id)
-                }
-                if !model.videoCallBrowserID.isEmpty,
-                   !model.availableBrowsers.contains(where: { $0.id == model.videoCallBrowserID }) {
-                    Text("Unavailable browser").tag(model.videoCallBrowserID).disabled(true)
+    /// New events start on this calendar. Grouped by account, as in Apple Calendar.
+    private var defaultCalendarPicker: some View {
+        Picker("Default calendar", selection: Binding(get: { model.defaultCalendarID }, set: { model.setDefaultCalendar($0) })) {
+            Text("Same as Apple Calendar").tag("")
+            ForEach(sources, id: \.id) { source in
+                let writable = source.calendars.filter(\.allowsContentModifications)
+                if !writable.isEmpty {
+                    Section(source.title) {
+                        ForEach(writable) { calendar in Text(calendar.title).tag(calendar.id) }
+                    }
                 }
             }
-            .pickerStyle(.inline).labelsHidden()
-        } label: {
+            if !model.defaultCalendarID.isEmpty, !model.writableCalendars.contains(where: { $0.id == model.defaultCalendarID }) {
+                Text("Unavailable calendar").tag(model.defaultCalendarID).disabled(true)
+            }
+        }
+        .pickerStyle(.inline).labelsHidden()
+    }
+
+    /// A Settings value shown as a compact menu button, glass on macOS 26 and material before.
+    @ViewBuilder
+    private func settingsMenu<Content: View>(_ value: String, label: String, @ViewBuilder content: () -> Content) -> some View {
+        let menu = Menu { content() } label: {
             HStack(spacing: 8) {
-                Text(model.videoCallBrowserName).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                Text(value).font(.system(size: 12, weight: .medium)).lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
                     .accessibilityHidden(true)
@@ -902,8 +910,28 @@ struct CalendarSettings: View {
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
         .fixedSize(horizontal: false, vertical: true)
-        .accessibilityLabel("Video call browser")
-        .accessibilityValue(model.videoCallBrowserName)
+        .accessibilityLabel(label)
+        .accessibilityValue(value)
+        if #available(macOS 26, *) {
+            menu.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 8))
+        } else {
+            menu.background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private var videoCallBrowserPicker: some View {
+        Picker("Video call browser", selection: Binding(get: { model.videoCallBrowserID }, set: { model.setVideoCallBrowser($0) })) {
+            Text("Default browser").tag("")
+            Divider()
+            ForEach(model.availableBrowsers) { browser in
+                Text(browser.name).tag(browser.id)
+            }
+            if !model.videoCallBrowserID.isEmpty,
+               !model.availableBrowsers.contains(where: { $0.id == model.videoCallBrowserID }) {
+                Text("Unavailable browser").tag(model.videoCallBrowserID).disabled(true)
+            }
+        }
+        .pickerStyle(.inline).labelsHidden()
     }
 
     private var dateFormatPreview: String {

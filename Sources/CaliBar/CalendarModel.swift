@@ -16,6 +16,8 @@ final class CalendarModel: ObservableObject {
     @Published private(set) var excludedIDs: Set<String>
     @Published private(set) var menuBarPreferences: MenuBarPreferences
     @Published private(set) var videoCallBrowserID: String
+    /// The calendar new events start on; empty uses Apple Calendar’s default.
+    @Published private(set) var defaultCalendarID: String
     @Published private(set) var availableBrowsers: [VideoCallBrowser] = []
     @Published var selectedDate: Date
     @Published var displayedMonth: Date
@@ -52,6 +54,7 @@ final class CalendarModel: ObservableObject {
         excludedIDs = demo ? [] : Set(defaults.stringArray(forKey: "excludedCalendars") ?? [])
         menuBarPreferences = demo ? MenuBarPreferences() : MenuBarPreferences.load(from: defaults)
         videoCallBrowserID = demo ? "" : defaults.string(forKey: "videoCallBrowserID") ?? ""
+        defaultCalendarID = demo ? "" : defaults.string(forKey: "defaultCalendarID") ?? ""
         access = demo ? .allowed : EventReader.access
         if demo {
             calendars = DemoData.calendars
@@ -109,7 +112,8 @@ final class CalendarModel: ObservableObject {
         guard eventDraft == nil else { return }
         var draft = EventDraft(day: selectedDate)
         let candidates = writableCalendars
-        draft.calendarID = candidates.first(where: { $0.isDefault })?.id
+        draft.calendarID = candidates.first(where: { $0.id == defaultCalendarID })?.id
+            ?? candidates.first(where: { $0.isDefault })?.id
             ?? candidates.first(where: { !excludedIDs.contains($0.id) })?.id
             ?? candidates.first?.id ?? ""
         if let choice = candidates.first(where: { $0.id == draft.calendarID }),
@@ -347,6 +351,16 @@ final class CalendarModel: ObservableObject {
     var videoCallBrowserName: String {
         if videoCallBrowserID.isEmpty { return "Default browser" }
         return availableBrowsers.first { $0.id == videoCallBrowserID }?.name ?? "Unavailable browser"
+    }
+
+    var defaultCalendarName: String {
+        if defaultCalendarID.isEmpty { return "Same as Apple Calendar" }
+        return writableCalendars.first { $0.id == defaultCalendarID }?.title ?? "Unavailable calendar"
+    }
+
+    func setDefaultCalendar(_ id: String) {
+        defaultCalendarID = id
+        if !isDemo { defaults.set(id, forKey: "defaultCalendarID") }
     }
 
     func setVideoCallBrowser(_ id: String) {
