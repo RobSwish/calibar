@@ -8,7 +8,7 @@ macOS 14 or later, on Apple silicon and Intel. Unzip CaliBar, move it to Applica
 
 - Month calendar and daily agenda, with trackpad swipes between months and the calendar colours you already use.
 - Create appointments from the bottom-left plus button (Command-N), inside the menu-bar panel. Choose a writable calendar, dates, time zone, location, video link, notes, availability, custom repeats and alerts. Save with Command-Return.
-- Add Google Meet to new events from the editor. One click creates the Meet link, with no need to open Apple Calendar or Google Calendar. Google calendars get a native Meet conference; other calendars get a standalone Meet link. On Google calendars you can also add invitees, and Google emails the invitations. Optional; see [Google Meet and invitations](docs/google-meet.md).
+- Add Google Meet to new events from the editor. One click creates the Meet link, with no need to open Apple Calendar or Google Calendar. Google calendars get a native Meet conference. On Google calendars you can also add invitees, and Google emails the invitations. Optional; see [Google Meet and invitations](docs/google-meet.md).
 - Next appointment in the menu bar, with date-format and today-only options.
 - Join video calls from the agenda or event details. Hold Option over the menu-bar item to reveal Join, then click to join its displayed video meeting. Command-click also joins.
 - Choose which installed browser opens your video calls.

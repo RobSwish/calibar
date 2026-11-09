@@ -1036,37 +1036,59 @@ private struct GoogleAccountSettings: View {
     var body: some View {
         if google.isAvailable {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Google accounts")
-                ForEach(google.emails, id: \.self) { email in
-                    HStack(spacing: 8) {
-                        Text(email).lineLimit(1).truncationMode(.middle)
-                        Spacer(minLength: 8)
-                        Button("Disconnect") { google.signOut(email) }.controlSize(.small)
-                    }
-                    .font(.system(size: 12))
-                    .accessibilityElement(children: .combine)
-                }
-                Button { Task { await google.signIn() } } label: {
-                    HStack(spacing: 4) {
-                        if google.isSigningIn {
-                            ProgressView().controlSize(.mini)
-                        } else {
-                            Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
+                HStack {
+                    Text("Google accounts")
+                    Spacer(minLength: 12)
+                    if google.isSigningIn {
+                        ProgressView().controlSize(.small).accessibilityLabel("Connecting to Google")
+                    } else {
+                        Button { Task { await google.signIn() } } label: {
+                            Image(systemName: "plus").font(.system(size: 12, weight: .semibold))
+                                .frame(width: 22, height: 22).contentShape(Rectangle())
                         }
-                        Text(google.isSignedIn ? "Add Account" : "Connect Google")
+                        .buttonStyle(.borderless)
+                        .help(google.isSignedIn ? "Add a Google account" : "Connect Google")
+                        .accessibilityLabel(google.isSignedIn ? "Add Google account" : "Connect Google")
                     }
-                    .font(.system(size: 12))
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).foregroundStyle(.tint)
-                .disabled(google.isSigningIn)
-                .accessibilityLabel(google.isSignedIn ? "Add Google account" : "Connect Google")
-                Text("Adds Meet links and sends invitations from these accounts’ calendars. Other calendars get the Meet link in the event.")
+                ForEach(google.emails, id: \.self) { email in
+                    GoogleAccountRow(email: email) { google.signOut(email) }
+                }
+                Text("Adds Meet links and sends invitations from these accounts’ calendars.")
                     .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if let error = google.error {
                     Text(error).font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
+    }
+}
+
+/// A connected account: a green status mark that becomes a red minus on hover, which disconnects it.
+private struct GoogleAccountRow: View {
+    let email: String
+    let disconnect: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Button(action: disconnect) {
+                Image(systemName: hovering ? "minus.circle.fill" : "checkmark.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(hovering ? Color.red : Color.green)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Disconnect \(email)")
+            .accessibilityLabel("Disconnect \(email)")
+            Text(email).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                .accessibilityLabel("\(email), connected")
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
     }
 }

@@ -148,9 +148,13 @@ struct EventEditor: View {
                     set: { draft.location = $0; draft.meetingURL = ""; draft.addsGoogleMeet = false }
                 ), axis: .vertical)
                     .textFieldStyle(.plain).lineLimit(1...3).accessibilityLabel("Location or video call")
-                GoogleMeetButton(google: model.google, draft: $draft, account: selectedCalendar.flatMap { model.google.account(for: $0, among: model.calendars) })
-                    // Centre the 32pt button on the field’s first 16pt line rather than its top edge.
-                    .alignmentGuide(.top) { $0[.top] + 8 }
+                // Meet links are for Google calendars; stay visible while a link is attached so it can be removed.
+                if invitationsAvailable || draft.addsGoogleMeet {
+                    GoogleMeetButton(google: model.google, draft: $draft, account: selectedCalendar.flatMap { model.google.account(for: $0, among: model.calendars) })
+                        // Centre the 32pt button on the field’s first 16pt line rather than its top edge.
+                        .alignmentGuide(.top) { $0[.top] + 8 }
+                        .transition(.opacity)
+                }
             }
             if model.google.isAvailable, let error = model.google.error {
                 Text(error).font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)

@@ -172,7 +172,7 @@ final class GoogleAccount: NSObject, ObservableObject {
 
     /// The menu-bar panel is a borderless pop-up that hides on outside clicks, so sign-in gets its own window.
     private func makeAnchorWindow(state: ConnectWindowState) -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 340),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 316),
                               styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "Connect Google"
         window.titleVisibility = .hidden
@@ -243,29 +243,34 @@ private struct GoogleConnectView: View {
                 .foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 6)
 
             VStack(spacing: 8) {
-                row("video", "Meet links on any event you add")
+                row("video", "Meet links on your Google calendar events")
                 row("person.2", "Invitations from your Google calendars")
                 row("lock", "Only what you save. Disconnect in Settings.")
             }
             .padding(.top, 20)
 
-            Spacer(minLength: 16)
-            HStack(spacing: 8) {
+            Group {
                 if state.isWaitingForGoogle {
-                    ProgressView().controlSize(.small)
-                    Text("Continue in the Google window…").foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
-                if !state.isWaitingForGoogle {
-                    Button("Continue with Google", action: proceed).keyboardShortcut(.defaultAction)
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Continue in the Google window…").foregroundStyle(.secondary)
+                    }
+                } else {
+                    Button("Continue with Google", action: proceed)
+                        .keyboardShortcut(.defaultAction).controlSize(.large)
                 }
             }
-            .controlSize(.large)
+            .frame(height: 32)
+            .padding(.top, 24)
+            Spacer(minLength: 0)
+        }
+        // No Cancel button: closing the window or pressing Escape cancels.
+        .background {
+            Button("Cancel", action: cancel).keyboardShortcut(.cancelAction).opacity(0).accessibilityHidden(true)
         }
         .font(.system(size: 13))
         .padding(.horizontal, 28).padding(.bottom, 20)
-        .frame(width: 440, height: 340)
+        .frame(width: 440, height: 316)
     }
 
     private func row(_ symbol: String, _ text: String) -> some View {
