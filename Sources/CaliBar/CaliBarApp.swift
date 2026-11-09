@@ -56,6 +56,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.appearance = NSAppearance(named: .darkAqua)
         }
         model = CalendarModel(demo: demo)
+        #if DEBUG
+        // Opens Google sign-in at launch, for checking the sign-in window.
+        if ProcessInfo.processInfo.arguments.contains("--debug-connect-google") {
+            Task { [model] in await model?.google.signIn() }
+        }
+        #endif
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
             button.target = self

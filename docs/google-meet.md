@@ -4,7 +4,7 @@ CaliBar can create a Google Meet link and invite people while you create an even
 
 ## How it behaves
 
-- **Add Google Meet** sits under the location field in the new-event editor. The first time you use it, it asks you to sign in to Google. After that it's one click.
+- The **Google Meet** icon sits at the end of the location field in the new-event editor. The first time you click it, it asks you to sign in to Google. After that it’s one click, and clicking again removes the link.
 - **Google calendars** (Google accounts added to Apple Calendar): CaliBar creates the event through the Google Calendar API, and Google attaches a native Meet conference, the same as one made on calendar.google.com. Apple Calendar then syncs the event down. CaliBar shows the event straight away and asks macOS to sync sooner.
 - **iCloud and other calendars**: CaliBar creates a standalone Meet room through the Google Meet API. It then saves the event through Apple Calendar (EventKit) with the link in the URL and notes.
 - CaliBar falls back to the standalone-link route if the Google calendar can't be matched for certain, or if the draft uses something the Google Calendar API can't represent: Tentative/Unavailable, sound alerts, alerts after or on a set date, alerts more than four weeks before, or email alerts to another address. Nothing you chose is dropped.
@@ -39,4 +39,4 @@ Scopes requested: `openid`, `email`, `calendar.events`, `calendar.calendarlist.r
 
 ## Testing without Google
 
-`open -n build/CaliBar.app --args --demo --demo-add` shows **Add Google Meet** in demo mode. Saving a demo event adds the sample Meet link and contacts nobody.
+`open -n build/CaliBar.app --args --demo --demo-add` shows the Google Meet icon in demo mode. Saving a demo event adds the sample Meet link and contacts nobody.

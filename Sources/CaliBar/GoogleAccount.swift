@@ -107,19 +107,79 @@ final class GoogleAccount: NSObject, ObservableObject {
 
     /// The menu-bar panel is a borderless pop-up that hides on outside clicks, so sign-in gets its own window.
     private func makeAnchorWindow() -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 160),
-                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        window.title = "Connect Google Account"
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 340),
+                              styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+        window.title = "Connect Google"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: VStack(spacing: 8) {
-            Text("Sign in to Google").font(.headline)
-            Text("CaliBar only creates the events, invitations and Meet links you save. You can disconnect in Settings.")
-                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        }.padding(24).frame(width: 420, height: 160))
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
+        window.contentView = NSHostingView(rootView: GoogleConnectView { [weak self] in self?.authSession?.cancel() })
+        window.delegate = self
         window.center()
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
         return window
+    }
+}
+
+extension GoogleAccount: NSWindowDelegate {
+    /// Closing the window abandons the sign-in.
+    nonisolated func windowWillClose(_ notification: Notification) {
+        MainActor.assumeIsolated { authSession?.cancel() }
+    }
+}
+
+/// Shown behind Google’s sign-in sheet: what connecting does, and a way out.
+private struct GoogleConnectView: View {
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 56, height: 56)
+                Image(systemName: "arrow.left.arrow.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(.tertiary)
+                // Sized to match the app icon’s visible tile, which sits inside its image’s margin.
+                GoogleMeetLogo().frame(width: 27)
+                    .frame(width: 45, height: 45)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .shadow(color: .black.opacity(0.14), radius: 1.5, y: 1)
+                    .frame(width: 56, height: 56)
+            }
+            .accessibilityHidden(true)
+            .padding(.top, 40)
+
+            Text("Connect Google").font(.system(size: 20, weight: .semibold)).padding(.top, 18)
+            Text("Add Meet links and send invitations without leaving CaliBar.")
+                .foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 6)
+
+            VStack(spacing: 8) {
+                row("video", "Meet links on any event you add")
+                row("person.2", "Invitations from your Google calendars")
+                row("lock", "Only what you save. Disconnect in Settings.")
+            }
+            .padding(.top, 20)
+
+            Spacer(minLength: 16)
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Continue in the Google window…").foregroundStyle(.secondary)
+                Spacer()
+                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
+            }
+        }
+        .font(.system(size: 13))
+        .padding(.horizontal, 28).padding(.bottom, 20)
+        .frame(width: 440, height: 340)
+    }
+
+    private func row(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 18)
+            Text(text)
+        }
     }
 }
 
