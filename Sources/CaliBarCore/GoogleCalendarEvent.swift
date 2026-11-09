@@ -230,7 +230,7 @@ public enum GoogleCalendarMatch {
             return value.hasSuffix("@gmail.com") || value.hasSuffix("@googlemail.com")
         }
         let sourceName = calendar.sourceName.lowercased()
-        if sourceName.contains("google") { return true }
+        if sourceName.contains("google") || sourceName.contains("gmail") { return true }
         if sourceName == "icloud" { return false }
         let source = calendars.filter { $0.sourceID == calendar.sourceID }
         if isGoogleAddress(sourceName) || source.contains(where: { isGoogleAddress($0.title) }) { return true }
@@ -257,9 +257,12 @@ public enum GoogleCalendarMatch {
         let source = calendars.filter { $0.sourceID == calendar.sourceID }
         let primaryNames = entries.first { $0.primary == true }?.names ?? [email]
         let sourceName = calendar.sourceName.lowercased()
+        guard sourceName != "icloud" else { return nil }
+        // People often rename the account in Apple Calendar (“Work”) and the primary calendar in Google (“General”),
+        // so a CalDAV account holding a calendar named like this account’s primary one counts too.
         let sourceIsAccount = sourceName == email
             || source.contains { $0.title.lowercased() == email }
-            || (sourceName.contains("google") && source.contains { primaryNames.contains($0.title.lowercased()) })
+            || ((sourceName.contains("google") || calendar.isCalDAV) && source.contains { primaryNames.contains($0.title.lowercased()) })
         guard sourceIsAccount else { return nil }
         let title = calendar.title.lowercased()
         let matches = entries.filter { $0.isWritable && $0.names.contains(title) }

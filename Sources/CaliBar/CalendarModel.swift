@@ -187,6 +187,24 @@ final class CalendarModel: ObservableObject {
         return .needsAccount(candidates.first)
     }
 
+    #if DEBUG
+    /// How each writable calendar is classified, for diagnosing Google detection (`--debug-google-matching`).
+    func googleMatchingReport() -> String {
+        var lines = ["Connected: \(google.emails)"]
+        for email in google.emails {
+            let entries = google.calendars[email] ?? []
+            lines.append("  \(email) list: " + entries.map { "\($0.summary ?? "?")\($0.primary == true ? " [primary \($0.id)]" : "") (\($0.accessRole ?? "?"))" }.joined(separator: "; "))
+        }
+        for calendar in calendars where !calendar.allowsContentModifications {
+            lines.append("  read-only \(calendar.sourceName) / \(calendar.title) avail=\(calendar.supportedAvailabilities.map(\.rawValue))")
+        }
+        for calendar in writableCalendars {
+            lines.append("\(calendar.sourceName) / \(calendar.title): avail=\(calendar.supportedAvailabilities.map(\.rawValue)) caldav=\(calendar.isCalDAV) looksGoogle=\(GoogleCalendarMatch.looksLikeGoogle(calendar, among: calendars)) exact=\(google.account(for: calendar, among: calendars) ?? "-") emails=\(GoogleCalendarMatch.accountEmails(for: calendar, among: calendars)) supports=\(supportsInvitations(calendar)) owner=\(googleOwnership(of: calendar))")
+        }
+        return lines.joined(separator: "\n")
+    }
+    #endif
+
     /// Whether invitees can be typed for this calendar now, rather than first connecting its Google account.
     func canInvite(from calendar: CalendarInfo?) -> Bool {
         if case .connected = googleOwnership(of: calendar) { return true }

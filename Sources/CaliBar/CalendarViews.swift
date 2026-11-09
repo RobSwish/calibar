@@ -1071,7 +1071,7 @@ private struct GoogleAccountRow: View {
                 Image(systemName: hovering ? "minus.circle.fill" : "checkmark.circle.fill")
                     .font(.system(size: 13))
                     .foregroundStyle(hovering ? Color.red : Color.green)
-                    .contentTransition(.symbolEffect(.replace))
+                    .contentTransition(.symbolEffect(.replace, options: .speed(1.6)))
                     .frame(width: 16, height: 16)
                     .contentShape(Rectangle())
             }
@@ -1084,6 +1084,6 @@ private struct GoogleAccountRow: View {
         }
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
+        .animation(.easeOut(duration: 0.08), value: hovering)
     }
 }

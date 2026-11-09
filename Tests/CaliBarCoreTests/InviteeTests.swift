@@ -114,6 +114,25 @@ struct GoogleInvitationTests {
         #expect(GoogleCalendarMatch.accountEmails(for: calendars[3], among: calendars).isEmpty)
     }
 
+    @Test func matchesRenamedAccountsByTheirPrimaryCalendar() {
+        func info(_ id: String, _ title: String, source: String, name: String) -> CalendarInfo {
+            CalendarInfo(id: id, title: title, sourceID: source, sourceName: name, red: 0, green: 0, blue: 0, isCalDAV: true)
+        }
+        let calendars = [
+            info("a", "General", source: "s", name: "SwiftLab"),
+            info("b", "Video Call", source: "s", name: "SwiftLab"),
+            info("c", "Home", source: "g", name: "Gmail"),
+            info("d", "General", source: "i", name: "iCloud")
+        ]
+        let swiftLab = [GoogleCalendarListEntry(id: "rob@swiftlab.co.uk", summary: "General", primary: true),
+                        GoogleCalendarListEntry(id: "abc@group.calendar.google.com", summary: "Video Call")]
+        #expect(GoogleCalendarMatch.calendarID(for: calendars[1], among: calendars, google: swiftLab, accountEmail: "rob@swiftlab.co.uk") == "abc@group.calendar.google.com")
+        #expect(GoogleCalendarMatch.calendarID(for: calendars[2], among: calendars, google: swiftLab, accountEmail: "rob@swiftlab.co.uk") == nil)
+        #expect(GoogleCalendarMatch.looksLikeGoogle(calendars[2], among: calendars))
+        #expect(!GoogleCalendarMatch.looksLikeGoogle(calendars[3], among: calendars))
+        #expect(GoogleCalendarMatch.calendarID(for: calendars[3], among: calendars, google: swiftLab, accountEmail: "rob@swiftlab.co.uk") == nil)
+    }
+
     @Test func recognisesWorkspaceAccountsButNotICloud() {
         func info(_ id: String, _ title: String, source: String, name: String, calDAV: Bool) -> CalendarInfo {
             CalendarInfo(id: id, title: title, sourceID: source, sourceName: name, red: 0, green: 0, blue: 0, isCalDAV: calDAV)

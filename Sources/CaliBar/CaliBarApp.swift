@@ -61,6 +61,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.arguments.contains("--debug-connect-google") {
             Task { [model] in await model?.google.signIn() }
         }
+        // Prints how calendars are matched to Google accounts, then quits.
+        if ProcessInfo.processInfo.arguments.contains("--debug-google-matching") {
+            Task { [model] in
+                model?.refresh()
+                for _ in 0..<30 where model?.writableCalendars.isEmpty != false { try? await Task.sleep(for: .milliseconds(500)) }
+                await model?.google.loadCalendarsIfNeeded()
+                print(model?.googleMatchingReport() ?? "no model")
+                fflush(stdout)
+                NSApp.terminate(nil)
+            }
+        }
         #endif
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
