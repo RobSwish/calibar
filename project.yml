@@ -14,7 +14,7 @@ settings:
     MARKETING_VERSION: '1.1.2'
     CURRENT_PROJECT_VERSION: '4'
     # Google OAuth client ID (iOS type) for Google Meet. Not secret; empty hides the feature. See docs/google-meet.md.
-    GOOGLE_CLIENT_ID: ''
+    GOOGLE_CLIENT_ID: '1010080324565-lg9op8q0f9gbjius2mvivujutkg5n14m.apps.googleusercontent.com'
 targets:
   CaliBarCore:
     type: framework
