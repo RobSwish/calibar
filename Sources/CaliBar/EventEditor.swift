@@ -694,8 +694,16 @@ private struct InviteeField: View {
         typedAddresses = Set(parsed.addresses.map { $0.lowercased() })
         // The typed text clears in the same update the pill appears in its place, starting as that same text.
         text = parsed.leftover
-        if merged != invitees { withAnimation(chipAnimation) { invitees = merged } }
         invalid = parsed.leftover.isEmpty ? nil : "“\(parsed.leftover)” isn’t an email address."
+        guard merged != invitees else { return }
+        if reduceMotion {
+            withAnimation(chipAnimation) { invitees = merged }
+        } else {
+            // Not animated: the field (and its cursor) must land straight after the new pill, where the typed
+            // text ended. Animating it would slide the cursor from the start of the row. The pill’s own settle
+            // animation then nudges it along as the padding opens.
+            invitees = merged
+        }
     }
 
     private func connect() { Task { await google.signIn(hint: accountHint) } }
