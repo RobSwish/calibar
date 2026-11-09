@@ -1029,30 +1029,39 @@ private enum EventTitleUnderHeaderKey: PreferenceKey {
     }
 }
 
-/// Connect or disconnect the Google account used only to create Meet links.
+/// Connect or disconnect the Google accounts used for Meet links and invitations.
 private struct GoogleAccountSettings: View {
     @ObservedObject var google: GoogleAccount
 
     var body: some View {
         if google.isAvailable {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Google Meet")
-                        if let email = google.email {
-                            Text(email).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                        }
+                Text("Google accounts")
+                ForEach(google.emails, id: \.self) { email in
+                    HStack(spacing: 8) {
+                        Text(email).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 8)
+                        Button("Disconnect") { google.signOut(email) }.controlSize(.small)
                     }
-                    Spacer(minLength: 12)
-                    if google.isSigningIn {
-                        ProgressView().controlSize(.small).accessibilityLabel("Connecting to Google")
-                    } else if google.isSignedIn {
-                        Button("Disconnect") { google.signOut() }
-                    } else {
-                        Button("Connect Google") { Task { await google.signIn() } }
-                    }
+                    .font(.system(size: 12))
+                    .accessibilityElement(children: .combine)
                 }
-                Text("Creates Meet links for events you save. Google calendars get the meeting attached, as in Google Calendar; other calendars get the link in the event.")
+                Button { Task { await google.signIn() } } label: {
+                    HStack(spacing: 4) {
+                        if google.isSigningIn {
+                            ProgressView().controlSize(.mini)
+                        } else {
+                            Image(systemName: "plus").font(.system(size: 10, weight: .semibold))
+                        }
+                        Text(google.isSignedIn ? "Add Account" : "Connect Google")
+                    }
+                    .font(.system(size: 12))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).foregroundStyle(.tint)
+                .disabled(google.isSigningIn)
+                .accessibilityLabel(google.isSignedIn ? "Add Google account" : "Connect Google")
+                Text("Adds Meet links and sends invitations from these accounts’ calendars. Other calendars get the Meet link in the event.")
                     .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 if let error = google.error {
                     Text(error).font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)

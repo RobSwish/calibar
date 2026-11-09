@@ -137,7 +137,7 @@ final class CalendarModel: ObservableObject {
                     location: draft.location, notes: draft.notes,
                     url: draft.addsGoogleMeet ? URL(string: "https://meet.google.com/abc-defg-hij")
                         : EventDraft.webURL(draft.meetingURL) ?? EventDraft.webURL(draft.url),
-                    organizer: draft.invitees.isEmpty ? nil : Self.participant(google.email ?? "you@example.com", isOrganizer: true),
+                    organizer: draft.invitees.isEmpty ? nil : Self.participant(google.emails.first ?? "you@example.com", isOrganizer: true),
                     attendees: draft.invitees.map { Self.participant($0) })
             } else if !draft.invitees.isEmpty {
                 event = try await saveWithInvitees(draft, calendar: calendar)
@@ -166,34 +166,58 @@ final class CalendarModel: ObservableObject {
         }
     }
 
-    /// Whether the editor offers invitees for this calendar. Once Google’s calendar list is loaded this is an
-    /// exact match against the signed-in account; before that it’s a guess from the account’s name.
+    /// Whether the editor offers invitees for this calendar: it belongs to a connected Google account, or
+    /// (until it’s connected or the calendar lists load) its account’s name suggests Google.
     func supportsInvitations(_ calendar: CalendarInfo?) -> Bool {
         guard let calendar, google.isAvailable else { return false }
-        if let email = google.email, let entries = google.calendars {
-            return GoogleCalendarMatch.calendarID(for: calendar, among: calendars, google: entries, accountEmail: email) != nil
+        return google.account(for: calendar, among: calendars) != nil || GoogleCalendarMatch.looksLikeGoogle(calendar, among: calendars)
+    }
+
+    /// Whether invitees can be typed for this calendar now, rather than first connecting its Google account.
+    func canInvite(from calendar: CalendarInfo?) -> Bool {
+        guard let calendar, google.isSignedIn else { return false }
+        return google.account(for: calendar, among: calendars) != nil || !google.hasAllCalendars
+    }
+
+    /// The connected account that owns this calendar, from freshly fetched calendar lists. Accounts Google
+    /// rejects are skipped; if no account matches, the last other failure is rethrown.
+    private func googleCalendar(for calendar: CalendarInfo) async throws -> (email: String, client: GoogleClient, id: String)? {
+        var failure: Error?
+        for email in google.emails {
+            guard let client = google.client(for: email), await client.account?.canCreateCalendarEvents == true else { continue }
+            do {
+                let entries = try await client.calendars()
+                google.update(calendars: entries, for: email)
+                if let id = GoogleCalendarMatch.calendarID(for: calendar, among: calendars, google: entries, accountEmail: email) {
+                    return (email, client, id)
+                }
+            } catch let error as GoogleError where error.isRejection || error == .reconnectRequired {
+                continue
+            } catch {
+                failure = error
+            }
         }
-        return GoogleCalendarMatch.looksLikeGoogle(calendar, among: calendars)
+        if let failure { throw failure }
+        return nil
     }
 
     /// Invitations exist only on Google’s side (EventKit can’t add attendees), so unlike a Meet-only event
     /// there’s no Apple Calendar fallback: anything that would drop the invitees stops the save instead.
     private func saveWithInvitees(_ draft: EventDraft, calendar: CalendarInfo) async throws -> CalendarEvent {
-        guard let client = google.client else { throw GoogleError.notConfigured }
-        guard let account = await client.account else { throw GoogleError.notSignedIn }
-        guard account.canCreateCalendarEvents else { throw GoogleError.missingPermission }
-        if let feature = GoogleEventBody.unsupportedFeature(in: draft, accountEmail: account.email) {
+        guard google.isAvailable else { throw GoogleError.notConfigured }
+        guard google.isSignedIn else { throw GoogleError.notSignedIn }
+        guard let match = try await googleCalendar(for: calendar) else {
+            await google.syncState()
+            guard google.isSignedIn else { throw GoogleError.reconnectRequired }
+            throw InvitationError.needsGoogleCalendar(google.emails.joined(separator: " or "))
+        }
+        if let feature = GoogleEventBody.unsupportedFeature(in: draft, accountEmail: match.email) {
             throw InvitationError.unsupported(feature)
         }
-        guard let body = GoogleEventBody(draft: draft, accountEmail: account.email) else { throw GoogleError.invalidResponse }
-        let entries = try await client.calendars()
-        google.update(calendars: entries)
-        guard let calendarID = GoogleCalendarMatch.calendarID(for: calendar, among: calendars, google: entries, accountEmail: account.email) else {
-            throw InvitationError.needsGoogleCalendar(account.email)
-        }
-        let created = try await client.insertEvent(body, calendarID: calendarID)
+        guard let body = GoogleEventBody(draft: draft, accountEmail: match.email) else { throw GoogleError.invalidResponse }
+        let created = try await match.client.insertEvent(body, calendarID: match.id)
         return trackGoogleEvent(created, draft: draft, calendar: calendar, notes: body.description,
-                                organizer: account.email, invitees: body.attendees?.map(\.email) ?? [])
+                                organizer: match.email, invitees: body.attendees?.map(\.email) ?? [])
     }
 
     private static func participant(_ email: String, isOrganizer: Bool = false) -> CalendarParticipant {
@@ -203,25 +227,26 @@ final class CalendarModel: ObservableObject {
         return CalendarParticipant(url: mail.url ?? URL(string: "mailto:invitee")!, status: isOrganizer ? .accepted : .pending, isOrganizer: isOrganizer)
     }
 
-    /// Google calendars get a native Meet conference through Google’s API. Any other calendar, or a draft
+    /// Google calendars get a native Meet conference through their account’s API. Any other calendar, or a draft
     /// Google can’t represent exactly, is saved through EventKit with a standalone Meet room instead.
     private func saveWithGoogleMeet(_ draft: EventDraft, calendar: CalendarInfo) async throws -> CalendarEvent {
-        guard let client = google.client else { throw GoogleError.notConfigured }
-        guard let account = await client.account else { throw GoogleError.notSignedIn }
-        if account.canCreateCalendarEvents, let body = GoogleEventBody(draft: draft, accountEmail: account.email) {
+        guard google.isAvailable else { throw GoogleError.notConfigured }
+        guard google.isSignedIn else { throw GoogleError.notSignedIn }
+        if let match = try await googleCalendar(for: calendar), let body = GoogleEventBody(draft: draft, accountEmail: match.email) {
             do {
-                let entries = try await client.calendars()
-                if let calendarID = GoogleCalendarMatch.calendarID(for: calendar, among: calendars, google: entries, accountEmail: account.email) {
-                    let created = try await client.insertEvent(body, calendarID: calendarID)
-                    return trackGoogleEvent(created, draft: draft, calendar: calendar, notes: body.description)
-                }
+                let created = try await match.client.insertEvent(body, calendarID: match.id)
+                return trackGoogleEvent(created, draft: draft, calendar: calendar, notes: body.description)
             } catch let error as GoogleError where error.isRejection {
                 // Google refused without creating anything; fall back to a standalone link below.
             }
         }
-        guard account.canCreateMeetSpaces else { throw GoogleError.missingPermission }
+        // The editor normally made the room already; otherwise make one now.
         var linked = draft
-        linked.meetingURL = try await client.createMeetSpace().absoluteString
+        if EventDraft.webURL(draft.meetingURL) == nil {
+            guard let email = google.emails.first, let client = google.client(for: email) else { throw GoogleError.notSignedIn }
+            guard await client.account?.canCreateMeetSpaces == true else { throw GoogleError.missingPermission }
+            linked.meetingURL = try await client.createMeetSpace().absoluteString
+        }
         return try await reader.create(linked)
     }
 
@@ -429,11 +454,11 @@ final class CalendarModel: ObservableObject {
             return
         }
         if let eventURL = event?.appleCalendarURL, !isDemo {
-            NSWorkspace.shared.open([eventURL], withApplicationAt: url, configuration: NSWorkspace.OpenConfiguration()) { [weak self] _, error in
+            NSWorkspace.shared.open([eventURL], withApplicationAt: url, configuration: NSWorkspace.OpenConfiguration()) { @Sendable [weak self] _, error in
                 if error != nil { Task { @MainActor in self?.openCalendar() } }
             }
         } else {
-            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { @Sendable _, _ in }
         }
     }
 

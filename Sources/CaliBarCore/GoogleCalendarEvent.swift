@@ -21,7 +21,29 @@ public struct GoogleEventBody: Encodable, Equatable, Sendable {
             public var requestId: String
             public var conferenceSolutionKey = Key()
         }
-        public var createRequest: CreateRequest
+        public struct Solution: Encodable, Equatable, Sendable { public var key = Key() }
+        public struct EntryPoint: Encodable, Equatable, Sendable {
+            public var entryPointType = "video"
+            public var uri: String
+            public var label: String
+        }
+        /// Asks Google to create a new Meet room for the event.
+        public var createRequest: CreateRequest?
+        /// Or attaches a Meet room created earlier (Google needs the solution and at least one entry point).
+        public var conferenceId: String?
+        public var conferenceSolution: Solution?
+        public var entryPoints: [EntryPoint]?
+
+        public init(createRequest: CreateRequest) { self.createRequest = createRequest }
+
+        /// Attaches the Meet room already shown in the editor, so the saved event keeps that link.
+        public init?(existing url: URL) {
+            guard url.host?.lowercased() == "meet.google.com", MeetingLink.recognize(url) != nil else { return nil }
+            let code = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            conferenceId = code
+            conferenceSolution = Solution()
+            entryPoints = [EntryPoint(uri: "https://meet.google.com/\(code)", label: "meet.google.com/\(code)")]
+        }
     }
     public struct Attendee: Encodable, Equatable, Sendable {
         public var email: String
@@ -52,9 +74,12 @@ public struct GoogleEventBody: Encodable, Equatable, Sendable {
         let calendar = draft.calendar
         summary = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
         location = draft.location.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let call = EventDraft.webURL(draft.meetingURL)
+        // A Meet room made from the editor is attached as the event’s conference rather than written into the notes.
+        let existingMeet = draft.addsGoogleMeet ? call.flatMap(ConferenceData.init(existing:)) : nil
         var lines = [draft.notes.trimmingCharacters(in: .whitespacesAndNewlines)].filter { !$0.isEmpty }
         if let url = EventDraft.webURL(draft.url) { lines.append(url.absoluteString) }
-        if let call = EventDraft.webURL(draft.meetingURL) { lines.append("Video call: \(call.absoluteString)") }
+        if let call, existingMeet == nil { lines.append("Video call: \(call.absoluteString)") }
         description = lines.joined(separator: "\n\n").nilIfEmpty
         if draft.isAllDay {
             start = Time(date: Self.format(draft.savedStart, "yyyy-MM-dd", calendar.timeZone))
@@ -71,7 +96,7 @@ public struct GoogleEventBody: Encodable, Equatable, Sendable {
         let guests = Invitees.merging(draft.invitees, into: [])
             .filter { $0.caseInsensitiveCompare(accountEmail) != .orderedSame }
         attendees = guests.isEmpty ? nil : guests.map { Attendee(email: $0) }
-        conferenceData = draft.addsGoogleMeet ? ConferenceData(createRequest: .init(requestId: requestID)) : nil
+        conferenceData = existingMeet ?? (draft.addsGoogleMeet ? ConferenceData(createRequest: .init(requestId: requestID)) : nil)
     }
 
     /// Names what Google Calendar can’t store, for the message shown when invitees require Google.

@@ -142,18 +142,21 @@ struct EventEditor: View {
                 .font(.system(size: 23, weight: .semibold)).lineLimit(1...4)
                 .textFieldStyle(.plain).focused($titleFocused).accessibilityLabel("Event title")
             HStack(alignment: .top, spacing: 6) {
-                TextField(draft.addsGoogleMeet ? "Google Meet link added when you save" : "Location or video call", text: Binding(
+                TextField("Location or video call", text: Binding(
                     get: { draft.meetingURL.isEmpty ? draft.location : draft.meetingURL },
-                    set: { draft.location = $0; draft.meetingURL = "" }
+                    // Editing the shown link replaces it, so it’s no longer the Meet room Google created.
+                    set: { draft.location = $0; draft.meetingURL = ""; draft.addsGoogleMeet = false }
                 ), axis: .vertical)
                     .textFieldStyle(.plain).lineLimit(1...3).accessibilityLabel("Location or video call")
-                GoogleMeetButton(google: model.google, isOn: $draft.addsGoogleMeet)
+                GoogleMeetButton(google: model.google, draft: $draft, account: selectedCalendar.flatMap { model.google.account(for: $0, among: model.calendars) })
+                    // Centre the 32pt button on the field’s first 16pt line rather than its top edge.
+                    .alignmentGuide(.top) { $0[.top] + 8 }
             }
             if model.google.isAvailable, let error = model.google.error {
                 Text(error).font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
             }
             if showsInvitees {
-                InviteeField(google: model.google, invitees: $draft.invitees, text: $inviteeText,
+                InviteeField(google: model.google, canInvite: model.canInvite(from: selectedCalendar), invitees: $draft.invitees, text: $inviteeText,
                              warning: invitationsAvailable ? nil : "Invitations need a Google calendar. Choose one, or remove the invitees.")
                     .padding(.top, 2)
                     .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
@@ -610,6 +613,8 @@ private struct EventAlertRow: View {
 /// Email invitees as removable chips. Google sends the invitations when the event is saved.
 private struct InviteeField: View {
     @ObservedObject var google: GoogleAccount
+    /// False when the calendar’s Google account isn’t connected yet, so the field offers to connect it.
+    let canInvite: Bool
     @Binding var invitees: [String]
     @Binding var text: String
     let warning: String?
@@ -618,7 +623,7 @@ private struct InviteeField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if google.isSignedIn {
+            if canInvite {
                 HStack(alignment: .top, spacing: 6) {
                     Image(systemName: "person.2").foregroundStyle(.secondary).frame(width: 20, height: 20).accessibilityHidden(true)
                     FlowLayout(spacing: 4) {
@@ -645,7 +650,7 @@ private struct InviteeField: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).foregroundStyle(.secondary).disabled(google.isSigningIn)
-                .help("Connect your Google account to send invitations")
+                .help(google.isSignedIn ? "Connect this calendar’s Google account to send invitations" : "Connect your Google account to send invitations")
             }
             // Sign-in errors already show under the location field.
             if let message = invalid ?? warning {
@@ -714,107 +719,91 @@ private struct FlowLayout: Layout {
     }
 }
 
-/// The Google Meet logo at the end of the location field. Muted until hovered or turned on; the link is created at save time.
+/// The Google Meet logo at the end of the location field: a grey outline until a link is added, then in colour.
+/// Clicking creates a Meet link straight away and puts it in the field; clicking again takes it out.
 private struct GoogleMeetButton: View {
     @ObservedObject var google: GoogleAccount
-    @Binding var isOn: Bool
+    @Binding var draft: EventDraft
+    /// The account that owns the event’s calendar, which should own the Meet room too.
+    let account: String?
     @State private var hovering = false
+
+    private var isOn: Bool { draft.addsGoogleMeet }
+    private var isBusy: Bool { google.isSigningIn || google.isCreatingMeet }
 
     var body: some View {
         if google.isAvailable {
             Button(action: toggle) {
                 ZStack {
-                    if google.isSigningIn {
+                    if isOn || hovering { Circle().fill(.quaternary) }
+                    if isBusy {
                         ProgressView().controlSize(.small)
+                    } else if isOn {
+                        GoogleMeetLogo().frame(width: 16).saturation(0.85)
                     } else {
-                        GoogleMeetLogo()
-                            .frame(width: 17)
-                            .saturation(isOn || hovering ? 1 : 0)
-                            .opacity(isOn || hovering ? 1 : 0.55)
+                        GoogleMeetLogo(template: true).frame(width: 16)
+                            .foregroundStyle(hovering ? .primary : .secondary)
                     }
                 }
-                .frame(width: 26, height: 22)
-                .background(isOn ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 6))
-                .contentShape(Rectangle())
+                .frame(width: 32, height: 32)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .disabled(google.isSigningIn)
+            .disabled(isBusy)
             .onHover { hovering = $0 }
+            // The icon sits at the panel’s trailing edge, so the label sits to its left.
+            .overlay(alignment: .trailing) {
+                if hovering && !isBusy {
+                    Text(isOn ? "Remove Meet link" : "Add Meet link")
+                        .font(.system(size: 11, weight: .medium)).fixedSize()
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(.regularMaterial, in: Capsule())
+                        .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
+                        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                        .offset(x: -36)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                        .accessibilityHidden(true)
+                }
+            }
             .animation(.easeOut(duration: 0.15), value: hovering)
             .animation(.easeOut(duration: 0.15), value: isOn)
-            .help(helpText)
-            .accessibilityLabel(isOn ? "Remove Google Meet" : "Add Google Meet")
+            .accessibilityLabel(isOn ? "Remove Google Meet link" : "Add Google Meet link")
             .accessibilityAddTraits(isOn ? .isSelected : [])
+            .zIndex(1)
         }
-    }
-
-    private var helpText: String {
-        if isOn { return "A Google Meet link is added when you save. Click to remove it." }
-        return google.isSignedIn ? "Add a Google Meet link" : "Add a Google Meet link (connects your Google account)"
     }
 
     private func toggle() {
-        if isOn || google.isSignedIn { isOn.toggle(); return }
-        Task { if await google.signIn() { isOn = true } }
+        if isOn {
+            draft.addsGoogleMeet = false
+            draft.meetingURL = ""
+            return
+        }
+        Task {
+            guard let link = await google.createMeetLink(preferring: account) else { return }
+            draft.meetingURL = link.absoluteString
+            draft.addsGoogleMeet = true
+        }
     }
 }
 
-/// Google Meet’s product logo, drawn from its published 87.5 × 72 artwork.
+/// Google Meet’s current product logo, bundled from Google’s published artwork. The template version is a
+/// one-colour silhouette (white dot cut out) that takes the foreground style.
 struct GoogleMeetLogo: View {
+    var template = false
+    private static let colour = Bundle.main.image(forResource: "GoogleMeet")
+    private static let silhouette = Bundle.main.image(forResource: "GoogleMeetTemplate")
+
     var body: some View {
-        Canvas { context, size in
-            let scale = min(size.width / 87.5, size.height / 72)
-            context.translateBy(x: (size.width - 87.5 * scale) / 2, y: (size.height - 72 * scale) / 2)
-            context.scaleBy(x: scale, y: scale)
-            for (color, path) in Self.parts { context.fill(path, with: .color(color)) }
+        Group {
+            if let image = template ? Self.silhouette : Self.colour {
+                Image(nsImage: image).resizable().interpolation(.high).renderingMode(template ? .template : .original)
+            } else {
+                Image(systemName: "video.fill").resizable()
+            }
         }
-        .aspectRatio(87.5 / 72, contentMode: .fit)
+        .aspectRatio(470.0 / 368.0, contentMode: .fit)
         .accessibilityHidden(true)
     }
-
-    private static func path(_ build: (inout Path) -> Void) -> Path { var path = Path(); build(&path); return path }
-    private static func rgb(_ hex: UInt32) -> Color {
-        Color(red: Double(hex >> 16 & 0xFF) / 255, green: Double(hex >> 8 & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
-    }
-
-    private static let parts: [(Color, Path)] = [
-        (rgb(0x00832D), path {
-            $0.move(to: CGPoint(x: 49.5, y: 36)); $0.addLine(to: CGPoint(x: 58.03, y: 45.75))
-            $0.addLine(to: CGPoint(x: 69.5, y: 53.08)); $0.addLine(to: CGPoint(x: 71.5, y: 36.06))
-            $0.addLine(to: CGPoint(x: 69.5, y: 19.42)); $0.addLine(to: CGPoint(x: 57.81, y: 25.86)); $0.closeSubpath()
-        }),
-        (rgb(0x0066DA), path {
-            $0.move(to: CGPoint(x: 0, y: 51.5)); $0.addLine(to: CGPoint(x: 0, y: 66))
-            $0.addCurve(to: CGPoint(x: 6, y: 72), control1: CGPoint(x: 0, y: 69.315), control2: CGPoint(x: 2.685, y: 72))
-            $0.addLine(to: CGPoint(x: 20.5, y: 72)); $0.addLine(to: CGPoint(x: 23.5, y: 61.04))
-            $0.addLine(to: CGPoint(x: 20.5, y: 51.5)); $0.addLine(to: CGPoint(x: 10.55, y: 48.5)); $0.closeSubpath()
-        }),
-        (rgb(0xE94235), path {
-            $0.move(to: CGPoint(x: 20.5, y: 0)); $0.addLine(to: CGPoint(x: 0, y: 20.5))
-            $0.addLine(to: CGPoint(x: 10.55, y: 23.5)); $0.addLine(to: CGPoint(x: 20.5, y: 20.5))
-            $0.addLine(to: CGPoint(x: 23.45, y: 11.09)); $0.closeSubpath()
-        }),
-        (rgb(0x2684FC), Path(CGRect(x: 0, y: 20.5, width: 20.5, height: 31))),
-        (rgb(0x00AC47), path {
-            $0.move(to: CGPoint(x: 82.6, y: 8.68)); $0.addLine(to: CGPoint(x: 69.5, y: 19.42))
-            $0.addLine(to: CGPoint(x: 69.5, y: 53.08)); $0.addLine(to: CGPoint(x: 82.66, y: 63.87))
-            $0.addCurve(to: CGPoint(x: 87.51, y: 61.5), control1: CGPoint(x: 84.63, y: 65.41), control2: CGPoint(x: 87.51, y: 64.005))
-            $0.addLine(to: CGPoint(x: 87.51, y: 11))
-            $0.addCurve(to: CGPoint(x: 82.6, y: 8.68), control1: CGPoint(x: 87.51, y: 8.465), control2: CGPoint(x: 84.565, y: 7.075))
-            $0.closeSubpath()
-            $0.move(to: CGPoint(x: 49.5, y: 36)); $0.addLine(to: CGPoint(x: 49.5, y: 51.5))
-            $0.addLine(to: CGPoint(x: 20.5, y: 51.5)); $0.addLine(to: CGPoint(x: 20.5, y: 72))
-            $0.addLine(to: CGPoint(x: 63.5, y: 72))
-            $0.addCurve(to: CGPoint(x: 69.5, y: 66), control1: CGPoint(x: 66.815, y: 72), control2: CGPoint(x: 69.5, y: 69.315))
-            $0.addLine(to: CGPoint(x: 69.5, y: 53.08)); $0.closeSubpath()
-        }),
-        (rgb(0xFFBA00), path {
-            $0.move(to: CGPoint(x: 63.5, y: 0)); $0.addLine(to: CGPoint(x: 20.5, y: 0))
-            $0.addLine(to: CGPoint(x: 20.5, y: 20.5)); $0.addLine(to: CGPoint(x: 49.5, y: 20.5))
-            $0.addLine(to: CGPoint(x: 49.5, y: 36)); $0.addLine(to: CGPoint(x: 69.5, y: 19.43))
-            $0.addLine(to: CGPoint(x: 69.5, y: 6))
-            $0.addCurve(to: CGPoint(x: 63.5, y: 0), control1: CGPoint(x: 69.5, y: 2.685), control2: CGPoint(x: 66.815, y: 0))
-            $0.closeSubpath()
-        })
-    ]
 }

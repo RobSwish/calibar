@@ -4,14 +4,15 @@ CaliBar can create a Google Meet link and invite people while you create an even
 
 ## How it behaves
 
-- The **Google Meet** icon sits at the end of the location field in the new-event editor. The first time you click it, it asks you to sign in to Google. After that it’s one click, and clicking again removes the link.
-- **Google calendars** (Google accounts added to Apple Calendar): CaliBar creates the event through the Google Calendar API, and Google attaches a native Meet conference, the same as one made on calendar.google.com. Apple Calendar then syncs the event down. CaliBar shows the event straight away and asks macOS to sync sooner.
+- The **Google Meet** icon sits at the end of the location field in the new-event editor. Clicking it creates a Meet room straight away and puts its link in the field; clicking again removes it. The first time, it asks you to connect Google. The room belongs to the account that owns the event’s calendar, or to the first connected account otherwise.
+- **Several Google accounts** can be connected. Each calendar is matched to the account that owns it, which creates the event, attaches the Meet room and sends the invitations.
+- **Google calendars** (Google accounts added to Apple Calendar): CaliBar creates the event through that account’s Google Calendar API and attaches the Meet room as the event’s native conference, the same as one made on calendar.google.com. Apple Calendar then syncs the event down. CaliBar shows the event straight away and asks macOS to sync sooner.
 - **iCloud and other calendars**: CaliBar creates a standalone Meet room through the Google Meet API. It then saves the event through Apple Calendar (EventKit) with the link in the URL and notes.
 - CaliBar falls back to the standalone-link route if the Google calendar can't be matched for certain, or if the draft uses something the Google Calendar API can't represent: Tentative/Unavailable, sound alerts, alerts after or on a set date, alerts more than four weeks before, or email alerts to another address. Nothing you chose is dropped.
-- **Invitees** appear under the Meet button when the chosen calendar belongs to the connected Google account. Type or paste addresses (commas, semicolons and `Name <email>` work). CaliBar saves the event through the Google Calendar API and Google emails the invitations (`sendUpdates=all`). Events without invitees notify nobody (`sendUpdates=none`).
+- **Invitees** appear under the location field when the chosen calendar belongs to a connected Google account. If it looks like a Google calendar whose account isn’t connected, the field offers to connect it. Type or paste addresses (commas, semicolons and `Name <email>` work). CaliBar saves the event through the Google Calendar API and Google emails the invitations (`sendUpdates=all`). Events without invitees notify nobody (`sendUpdates=none`).
 - Apple Calendar's API (EventKit) can't add invitees, so invitations don't fall back to Apple Calendar. If the calendar isn't a Google calendar, or the event uses something Google can't store (see above), CaliBar says so and saves nothing, rather than dropping the invitees.
-- Until Google's calendar list loads, CaliBar guesses which calendars are Google from the account name. After that, it matches against the signed-in account exactly.
-- Only the Google refresh token, account email and granted scopes are stored, in the macOS Keychain. **Settings → Google Meet → Disconnect** removes them and revokes access at Google.
+- Until Google's calendar list loads, CaliBar guesses which calendars are Google from the account name. After that, it matches against each connected account exactly.
+- For each account, only the Google refresh token, account email and granted scopes are stored, in its own macOS Keychain item. **Settings → Google accounts → Disconnect** removes that account and revokes its access at Google.
 
 Scopes requested: `openid`, `email`, `calendar.events`, `calendar.calendarlist.readonly` and `meetings.space.created`.
 
@@ -29,7 +30,7 @@ Scopes requested: `openid`, `email`, `calendar.events`, `calendar.calendarlist.r
    ```
 
    Or pass it for a single build without committing it: `GOOGLE_CLIENT_ID=… ./scripts/build.sh` (`scripts/release.sh` honours it too).
-7. Build, open CaliBar, then **Settings → Google Meet → Connect Google**.
+7. Build, open CaliBar, then **Settings → Google accounts → Connect Google** (or **Add Account** for another).
 
 ## Publishing status
 

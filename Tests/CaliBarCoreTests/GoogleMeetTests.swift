@@ -106,6 +106,30 @@ struct GoogleEventBodyTests {
         #expect((object["start"] as? [String: Any])?["date"] == nil)
     }
 
+    @Test func meetRoomFromTheEditorIsAttachedNotRecreated() throws {
+        var value = draft()
+        value.addsGoogleMeet = true
+        value.meetingURL = "https://meet.google.com/abc-defg-hij"
+        let body = try #require(GoogleEventBody(draft: value, accountEmail: "me@example.com", requestID: "req-1"))
+        #expect(body.description == nil)
+        let conference = try #require(try json(body)["conferenceData"] as? [String: Any])
+        #expect(conference["createRequest"] == nil)
+        #expect(conference["conferenceId"] as? String == "abc-defg-hij")
+        #expect((conference["conferenceSolution"] as? [String: Any]).flatMap { $0["key"] as? [String: Any] }?["type"] as? String == "hangoutsMeet")
+        let entry = try #require((conference["entryPoints"] as? [[String: Any]])?.first)
+        #expect(entry["entryPointType"] as? String == "video")
+        #expect(entry["uri"] as? String == "https://meet.google.com/abc-defg-hij")
+    }
+
+    @Test func otherCallLinksStayInTheNotes() throws {
+        var value = draft()
+        value.addsGoogleMeet = true
+        value.meetingURL = "https://zoom.us/j/123456789"
+        let body = try #require(GoogleEventBody(draft: value, accountEmail: "me@example.com", requestID: "req-1"))
+        #expect(body.description == "Video call: https://zoom.us/j/123456789")
+        #expect(body.conferenceData?.createRequest?.requestId == "req-1")
+    }
+
     @Test func allDayEventsUseExclusiveEndDates() throws {
         var value = draft()
         value.setAllDay(true)

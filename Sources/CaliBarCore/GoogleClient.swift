@@ -1,6 +1,13 @@
 import Foundation
 
-/// Talks to Google’s OAuth, Calendar and Meet endpoints. Only the refresh token is persisted.
+/// A completed Google sign-in, before it’s stored for its account.
+public struct GoogleSignIn: Sendable {
+    public let credentials: GoogleCredentials
+    let accessToken: String
+    let expiry: Date
+}
+
+/// Talks to Google’s OAuth, Calendar and Meet endpoints for one Google account. Only the refresh token is persisted.
 public actor GoogleClient {
     public nonisolated let configuration: GoogleOAuthConfiguration
     private let storage: any GoogleCredentialStorage
@@ -17,20 +24,28 @@ public actor GoogleClient {
 
     public var account: GoogleCredentials? { credentials }
 
-    public func completeSignIn(code: String, verifier: String) async throws -> GoogleCredentials {
-        let token: GoogleTokenResponse = try await tokenRequest([
+    /// Exchanges the sign-in code. The account isn’t known until Google answers, so the caller then
+    /// hands the result to that account’s client with `adopt(_:)`.
+    public static func exchange(code: String, verifier: String, configuration: GoogleOAuthConfiguration,
+                                session: URLSession = .shared) async throws -> GoogleSignIn {
+        let token = try await tokenRequest([
             "code": code, "client_id": configuration.clientID, "redirect_uri": configuration.redirectURI,
             "grant_type": "authorization_code", "code_verifier": verifier
-        ])
+        ], session: session)
         guard let refresh = token.refreshToken, let email = token.idToken.flatMap(GoogleIDToken.email(from:)) else {
             throw GoogleError.invalidResponse
         }
         let signedIn = GoogleCredentials(email: email, refreshToken: refresh, scopes: token.scopes)
         guard signedIn.canCreateMeetSpaces || signedIn.canCreateCalendarEvents else { throw GoogleError.missingPermission }
-        try storage.save(signedIn)
-        credentials = signedIn
-        accessToken = (token.accessToken, Date().addingTimeInterval((token.expiresIn ?? 3600) - 60))
-        return signedIn
+        return GoogleSignIn(credentials: signedIn, accessToken: token.accessToken,
+                            expiry: Date().addingTimeInterval((token.expiresIn ?? 3600) - 60))
+    }
+
+    /// Stores a fresh sign-in for this client’s account.
+    public func adopt(_ signIn: GoogleSignIn) throws {
+        try storage.save(signIn.credentials)
+        credentials = signIn.credentials
+        accessToken = (signIn.accessToken, signIn.expiry)
     }
 
     /// Forgets the account locally, then asks Google to revoke the grant (best effort).
@@ -139,13 +154,17 @@ public actor GoogleClient {
     }
 
     private func tokenRequest(_ fields: [String: String]) async throws -> GoogleTokenResponse {
+        try await Self.tokenRequest(fields, session: session)
+    }
+
+    private static func tokenRequest(_ fields: [String: String], session: URLSession) async throws -> GoogleTokenResponse {
         var request = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.httpBody = Self.form(fields)
+        request.httpBody = form(fields)
         let (data, response) = try await session.data(for: request)
         guard let status = (response as? HTTPURLResponse)?.statusCode else { throw GoogleError.invalidResponse }
-        try Self.check(status: status, data: data)
+        try check(status: status, data: data)
         do { return try JSONDecoder().decode(GoogleTokenResponse.self, from: data) } catch { throw GoogleError.invalidResponse }
     }
 

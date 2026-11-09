@@ -25,7 +25,8 @@ public struct GoogleOAuthConfiguration: Equatable, Sendable {
     }
     public var redirectURI: String { callbackScheme + ":/oauth2redirect" }
 
-    public func authorizationURL(challenge: String, state: String, loginHint: String? = nil) -> URL {
+    /// `prompt: "select_account"` shows Google’s account chooser, for adding another account.
+    public func authorizationURL(challenge: String, state: String, loginHint: String? = nil, prompt: String? = nil) -> URL {
         var components = URLComponents(string: "https://accounts.google.com/o/oauth2/v2/auth")!
         var items = [
             URLQueryItem(name: "client_id", value: clientID),
@@ -37,6 +38,7 @@ public struct GoogleOAuthConfiguration: Equatable, Sendable {
             URLQueryItem(name: "state", value: state)
         ]
         if let loginHint, !loginHint.isEmpty { items.append(URLQueryItem(name: "login_hint", value: loginHint)) }
+        if let prompt { items.append(URLQueryItem(name: "prompt", value: prompt)) }
         components.queryItems = items
         return components.url!
     }
@@ -150,12 +152,36 @@ public protocol GoogleCredentialStorage: Sendable {
     func clear()
 }
 
+/// One Keychain item per Google account, named by the account’s email.
 public struct KeychainCredentialStorage: GoogleCredentialStorage {
+    /// Where the single account was kept before CaliBar supported several.
+    static let legacyAccount = "google"
     let service: String
     let account: String
 
-    public init(service: String, account: String = "google") {
+    public init(service: String, email: String) {
+        self.init(service: service, account: email.lowercased())
+    }
+
+    init(service: String, account: String) {
         self.service = service; self.account = account
+    }
+
+    /// The connected accounts’ emails, sorted. Moves a single-account item to its email’s name first.
+    public static func connectedEmails(service: String) -> [String] {
+        let legacy = KeychainCredentialStorage(service: service, account: legacyAccount)
+        if let credentials = legacy.load() {
+            let moved = KeychainCredentialStorage(service: service, email: credentials.email)
+            if (try? moved.save(credentials)) != nil { legacy.clear() }
+        }
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                                    kSecReturnAttributes as String: true, kSecMatchLimit as String: kSecMatchLimitAll]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]] else { return [] }
+        return items.compactMap { $0[kSecAttrAccount as String] as? String }
+            .filter { $0 != legacyAccount && $0.contains("@") }
+            .sorted()
     }
 
     private var query: [String: Any] {
