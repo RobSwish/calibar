@@ -28,7 +28,8 @@ struct EventEditor: View {
     private var selectedCalendar: CalendarInfo? { model.writableCalendars.first { $0.id == draft.calendarID } }
     private var invitationsAvailable: Bool { model.supportsInvitations(selectedCalendar) }
     /// Shown for Google calendars, and kept on screen after switching away if it already holds invitees.
-    private var showsInvitees: Bool { invitationsAvailable || !draft.invitees.isEmpty }
+    /// Only for calendars whose Google account is connected; it stays while invitees exist so they can be removed.
+    private var showsInvitees: Bool { model.canInvite(from: selectedCalendar) || !draft.invitees.isEmpty }
     private var showsMeetButton: Bool { model.google.isAvailable && (invitationsAvailable || draft.addsGoogleMeet) }
     private var canSave: Bool { model.ready && selectedCalendar != nil && draft.validationMessage == nil && !model.isSavingEvent }
     private var editorAnimation: Animation { .easeInOut(duration: reduceMotion ? 0.1 : 0.2) }
@@ -63,7 +64,6 @@ struct EventEditor: View {
                         .padding(.bottom, 6)
                     if showsInvitees {
                         card {
-                            Text("Invitees").foregroundStyle(.secondary)
                             InviteeField(google: model.google, canInvite: model.canInvite(from: selectedCalendar),
                                          accountHint: { if case .needsAccount(let hint) = model.googleOwnership(of: selectedCalendar) { hint } else { nil } }(),
                                          invitees: $draft.invitees, text: $inviteeText,
