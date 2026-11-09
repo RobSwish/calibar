@@ -1042,13 +1042,8 @@ private struct GoogleAccountSettings: View {
                     if google.isSigningIn {
                         ProgressView().controlSize(.small).accessibilityLabel("Connecting to Google")
                     } else {
-                        Button { Task { await google.signIn() } } label: {
-                            Image(systemName: "plus").font(.system(size: 12, weight: .semibold))
-                                .frame(width: 22, height: 22).contentShape(Rectangle())
-                        }
-                        .buttonStyle(.borderless)
-                        .help(google.isSignedIn ? "Add a Google account" : "Connect Google")
-                        .accessibilityLabel(google.isSignedIn ? "Add Google account" : "Connect Google")
+                        Button(google.isSignedIn ? "Add Account" : "Connect Google") { Task { await google.signIn() } }
+                            .controlSize(.small)
                     }
                 }
                 ForEach(google.emails, id: \.self) { email in
