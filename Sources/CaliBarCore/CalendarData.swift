@@ -11,14 +11,17 @@ public struct CalendarInfo: Identifiable, Sendable {
     public let allowsContentModifications: Bool
     public let supportedAvailabilities: [EventAvailability]
     public let isDefault: Bool
+    /// Whether the account syncs over CalDAV, as Google and iCloud accounts do (not Exchange, local or subscribed).
+    public let isCalDAV: Bool
 
     public init(id: String, title: String, sourceID: String, sourceName: String, red: Double, green: Double, blue: Double, allowsContentModifications: Bool = false,
-                supportedAvailabilities: [EventAvailability] = [], isDefault: Bool = false) {
+                supportedAvailabilities: [EventAvailability] = [], isDefault: Bool = false, isCalDAV: Bool = false) {
         self.id = id; self.title = title; self.sourceID = sourceID; self.sourceName = sourceName
         self.red = red; self.green = green; self.blue = blue
         self.allowsContentModifications = allowsContentModifications
         self.supportedAvailabilities = supportedAvailabilities
         self.isDefault = isDefault
+        self.isCalDAV = isCalDAV
     }
 }
 

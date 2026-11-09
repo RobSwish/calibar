@@ -29,6 +29,7 @@ struct EventEditor: View {
     private var invitationsAvailable: Bool { model.supportsInvitations(selectedCalendar) }
     /// Shown for Google calendars, and kept on screen after switching away if it already holds invitees.
     private var showsInvitees: Bool { invitationsAvailable || !draft.invitees.isEmpty }
+    private var showsMeetButton: Bool { model.google.isAvailable && (invitationsAvailable || draft.addsGoogleMeet) }
     private var canSave: Bool { model.ready && selectedCalendar != nil && draft.validationMessage == nil && !model.isSavingEvent }
     private var editorAnimation: Animation { .easeInOut(duration: reduceMotion ? 0.1 : 0.2) }
     private var alertAnimation: Animation {
@@ -60,6 +61,16 @@ struct EventEditor: View {
                 VStack(alignment: .leading, spacing: 12) {
                     titleFields
                         .padding(.bottom, 6)
+                    if showsInvitees {
+                        card {
+                            Text("Invitees").foregroundStyle(.secondary)
+                            InviteeField(google: model.google, canInvite: model.canInvite(from: selectedCalendar),
+                                         accountHint: { if case .needsAccount(let hint) = model.googleOwnership(of: selectedCalendar) { hint } else { nil } }(),
+                                         invitees: $draft.invitees, text: $inviteeText,
+                                         warning: invitationsAvailable ? nil : "Invitations need a Google calendar. Choose one, or remove the invitees.")
+                        }
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+                    }
                     if !model.ready {
                         Text("Enable Sync calendars in Settings to save this event.").foregroundStyle(.secondary)
                     } else if model.writableCalendars.isEmpty {
@@ -141,29 +152,25 @@ struct EventEditor: View {
             TextField("Event title", text: $draft.title, axis: .vertical)
                 .font(.system(size: 23, weight: .semibold)).lineLimit(1...4)
                 .textFieldStyle(.plain).focused($titleFocused).accessibilityLabel("Event title")
-            HStack(alignment: .top, spacing: 6) {
-                TextField("Location or video call", text: Binding(
-                    get: { draft.meetingURL.isEmpty ? draft.location : draft.meetingURL },
-                    // Editing the shown link replaces it, so it’s no longer the Meet room Google created.
-                    set: { draft.location = $0; draft.meetingURL = ""; draft.addsGoogleMeet = false }
-                ), axis: .vertical)
-                    .textFieldStyle(.plain).lineLimit(1...3).accessibilityLabel("Location or video call")
-                // Meet links are for Google calendars; stay visible while a link is attached so it can be removed.
-                if invitationsAvailable || draft.addsGoogleMeet {
-                    GoogleMeetButton(google: model.google, draft: $draft, account: selectedCalendar.flatMap { model.google.account(for: $0, among: model.calendars) })
-                        // Centre the 32pt button on the field’s first 16pt line rather than its top edge.
-                        .alignmentGuide(.top) { $0[.top] + 8 }
-                        .transition(.opacity)
+            TextField("Location or video call", text: Binding(
+                get: { draft.meetingURL.isEmpty ? draft.location : draft.meetingURL },
+                // Editing the shown link replaces it, so it’s no longer the Meet room Google created.
+                set: { draft.location = $0; draft.meetingURL = ""; draft.addsGoogleMeet = false }
+            ), axis: .vertical)
+                .textFieldStyle(.plain).lineLimit(1...3).accessibilityLabel("Location or video call")
+                .padding(.trailing, showsMeetButton ? 30 : 0)
+                // An overlay, so the 32pt button never makes the row (and the calendar colour line) taller.
+                // Meet links are for Google calendars; it stays while a link is attached so it can be removed.
+                .overlay(alignment: .topTrailing) {
+                    if showsMeetButton {
+                        GoogleMeetButton(google: model.google, draft: $draft, ownership: { model.googleOwnership(of: selectedCalendar) })
+                            // Centre the button on the field’s first 16pt line.
+                            .offset(y: -8)
+                            .transition(.opacity)
+                    }
                 }
-            }
             if model.google.isAvailable, let error = model.google.error {
                 Text(error).font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
-            }
-            if showsInvitees {
-                InviteeField(google: model.google, canInvite: model.canInvite(from: selectedCalendar), invitees: $draft.invitees, text: $inviteeText,
-                             warning: invitationsAvailable ? nil : "Invitations need a Google calendar. Choose one, or remove the invitees.")
-                    .padding(.top, 2)
-                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(.leading, 14)
@@ -619,6 +626,8 @@ private struct InviteeField: View {
     @ObservedObject var google: GoogleAccount
     /// False when the calendar’s Google account isn’t connected yet, so the field offers to connect it.
     let canInvite: Bool
+    /// The calendar’s account email, when known, to pre-fill Google’s sign-in.
+    let accountHint: String?
     @Binding var invitees: [String]
     @Binding var text: String
     let warning: String?
@@ -629,7 +638,6 @@ private struct InviteeField: View {
         VStack(alignment: .leading, spacing: 4) {
             if canInvite {
                 HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "person.2").foregroundStyle(.secondary).frame(width: 20, height: 20).accessibilityHidden(true)
                     FlowLayout(spacing: 4) {
                         ForEach(invitees, id: \.self) { chip($0) }
                         TextField(invitees.isEmpty ? "Add invitees" : "Add more", text: $text)
@@ -654,7 +662,7 @@ private struct InviteeField: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain).foregroundStyle(.secondary).disabled(google.isSigningIn)
-                .help(google.isSignedIn ? "Connect this calendar’s Google account to send invitations" : "Connect your Google account to send invitations")
+                .help(accountHint.map { "Sign in to \($0) to send invitations from this calendar" } ?? "Sign in to this calendar’s Google account to send invitations")
             }
             // Sign-in errors already show under the location field.
             if let message = invalid ?? warning {
@@ -686,7 +694,7 @@ private struct InviteeField: View {
         invalid = parsed.leftover.isEmpty ? nil : "“\(parsed.leftover)” isn’t an email address."
     }
 
-    private func connect() { Task { await google.signIn() } }
+    private func connect() { Task { await google.signIn(hint: accountHint) } }
 }
 
 /// Lays out chips left to right, wrapping onto new rows.
@@ -728,8 +736,8 @@ private struct FlowLayout: Layout {
 private struct GoogleMeetButton: View {
     @ObservedObject var google: GoogleAccount
     @Binding var draft: EventDraft
-    /// The account that owns the event’s calendar, which should own the Meet room too.
-    let account: String?
+    /// Which connected account owns the event’s calendar (and so the Meet room), or which needs connecting.
+    let ownership: () -> GoogleOwnership
     @State private var hovering = false
 
     private var isOn: Bool { draft.addsGoogleMeet }
@@ -758,7 +766,7 @@ private struct GoogleMeetButton: View {
             // The icon sits at the panel’s trailing edge, so the label sits to its left.
             .overlay(alignment: .trailing) {
                 if hovering && !isBusy {
-                    Text(isOn ? "Remove Meet link" : "Add Meet link")
+                    Text(hoverText)
                         .font(.system(size: 11, weight: .medium)).fixedSize()
                         .padding(.horizontal, 7).padding(.vertical, 3)
                         .background(.regularMaterial, in: Capsule())
@@ -778,6 +786,12 @@ private struct GoogleMeetButton: View {
         }
     }
 
+    private var hoverText: String {
+        if isOn { return "Remove Meet link" }
+        if case .needsAccount = ownership() { return "Sign in to add Meet link" }
+        return "Add Meet link"
+    }
+
     private func toggle() {
         if isOn {
             draft.addsGoogleMeet = false
@@ -785,7 +799,21 @@ private struct GoogleMeetButton: View {
             return
         }
         Task {
-            guard let link = await google.createMeetLink(preferring: account) else { return }
+            await google.loadCalendarsIfNeeded()
+            var owner = ownership()
+            if case .needsAccount(let hint) = owner {
+                // Connect the calendar’s own account; never borrow another connected one.
+                guard let email = await google.signIn(hint: hint) else { return }
+                owner = ownership()
+                if case .needsAccount = owner {
+                    if let hint, hint != email {
+                        google.error = "This calendar belongs to \(hint). Sign in with that account to add a Meet link."
+                        return
+                    }
+                    owner = .connected(email)
+                }
+            }
+            guard case .connected(let email) = owner, let link = await google.createMeetLink(as: email) else { return }
             draft.meetingURL = link.absoluteString
             draft.addsGoogleMeet = true
         }

@@ -98,4 +98,36 @@ struct GoogleInvitationTests {
         #expect(!GoogleCalendarMatch.looksLikeGoogle(calendars[2], among: calendars))
         #expect(GoogleCalendarMatch.looksLikeGoogle(calendars[4], among: calendars))
     }
+
+    @Test func readsTheAccountEmailFromTheSourceOrPrimaryCalendar() {
+        func info(_ id: String, _ title: String, source: String, name: String) -> CalendarInfo {
+            CalendarInfo(id: id, title: title, sourceID: source, sourceName: name, red: 0, green: 0, blue: 0, isCalDAV: true)
+        }
+        let calendars = [
+            info("a", "Work", source: "s", name: "Rob@SwiftLab.co.uk"),
+            info("b", "rob@walkies.app", source: "w", name: "Google"),
+            info("c", "Walks", source: "w", name: "Google"),
+            info("d", "Home", source: "g", name: "Google")
+        ]
+        #expect(GoogleCalendarMatch.accountEmails(for: calendars[0], among: calendars) == ["rob@swiftlab.co.uk"])
+        #expect(GoogleCalendarMatch.accountEmails(for: calendars[2], among: calendars) == ["rob@walkies.app"])
+        #expect(GoogleCalendarMatch.accountEmails(for: calendars[3], among: calendars).isEmpty)
+    }
+
+    @Test func recognisesWorkspaceAccountsButNotICloud() {
+        func info(_ id: String, _ title: String, source: String, name: String, calDAV: Bool) -> CalendarInfo {
+            CalendarInfo(id: id, title: title, sourceID: source, sourceName: name, red: 0, green: 0, blue: 0, isCalDAV: calDAV)
+        }
+        let calendars = [
+            info("a", "rob@swiftlab.co.uk", source: "w", name: "Work", calDAV: true),
+            info("b", "Team", source: "w", name: "Work", calDAV: true),
+            info("c", "Home", source: "e", name: "rob@swiftlab.co.uk", calDAV: true),
+            info("d", "me@icloud.com", source: "i", name: "iCloud", calDAV: true),
+            info("e", "rob@corp.example", source: "x", name: "Exchange", calDAV: false)
+        ]
+        #expect(GoogleCalendarMatch.looksLikeGoogle(calendars[1], among: calendars))
+        #expect(GoogleCalendarMatch.looksLikeGoogle(calendars[2], among: calendars))
+        #expect(!GoogleCalendarMatch.looksLikeGoogle(calendars[3], among: calendars))
+        #expect(!GoogleCalendarMatch.looksLikeGoogle(calendars[4], among: calendars))
+    }
 }

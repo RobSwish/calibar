@@ -170,13 +170,27 @@ final class CalendarModel: ObservableObject {
     /// (until it’s connected or the calendar lists load) its account’s name suggests Google.
     func supportsInvitations(_ calendar: CalendarInfo?) -> Bool {
         guard let calendar, google.isAvailable else { return false }
-        return google.account(for: calendar, among: calendars) != nil || GoogleCalendarMatch.looksLikeGoogle(calendar, among: calendars)
+        if google.account(for: calendar, among: calendars) != nil || GoogleCalendarMatch.looksLikeGoogle(calendar, among: calendars) { return true }
+        // A connected account’s email as the account name or a calendar title marks its calendars.
+        let names = Set(calendars.filter { $0.sourceID == calendar.sourceID }.map { $0.title.lowercased() } + [calendar.sourceName.lowercased()])
+        return google.emails.contains { names.contains($0) }
+    }
+
+    /// Which connected Google account owns this calendar, or which account needs connecting first.
+    /// Prefers an exact match from Google’s calendar lists, then the account name (or primary calendar title).
+    /// Never falls back to some other connected account.
+    func googleOwnership(of calendar: CalendarInfo?) -> GoogleOwnership {
+        guard let calendar else { return .needsAccount(nil) }
+        if let email = google.account(for: calendar, among: calendars) { return .connected(email) }
+        let candidates = GoogleCalendarMatch.accountEmails(for: calendar, among: calendars)
+        if let email = candidates.first(where: google.emails.contains) { return .connected(email) }
+        return .needsAccount(candidates.first)
     }
 
     /// Whether invitees can be typed for this calendar now, rather than first connecting its Google account.
     func canInvite(from calendar: CalendarInfo?) -> Bool {
-        guard let calendar, google.isSignedIn else { return false }
-        return google.account(for: calendar, among: calendars) != nil || !google.hasAllCalendars
+        if case .connected = googleOwnership(of: calendar) { return true }
+        return false
     }
 
     /// The connected account that owns this calendar, from freshly fetched calendar lists. Accounts Google
@@ -528,4 +542,10 @@ enum DemoData {
             CalendarEvent(id: "demo-6", title: "Weekly planning", start: time(9, offset: 1), end: time(9, 30, offset: 1), calendar: calendars[0])
         ]
     }
+}
+
+/// Whether a calendar’s Google account is connected, or needs connecting (with its email when known).
+enum GoogleOwnership: Equatable {
+    case connected(String)
+    case needsAccount(String?)
 }

@@ -222,15 +222,31 @@ public struct GoogleCreatedEvent: Decodable, Sendable {
 }
 
 public enum GoogleCalendarMatch {
-    /// A best guess, before Google’s calendar list is available, at whether a calendar is synced from Google.
+    /// A best guess, without asking Google, at whether a calendar is synced from a Google account. EventKit
+    /// doesn’t say which server an account uses, so this reads the account’s name and its calendars’ titles.
     public static func looksLikeGoogle(_ calendar: CalendarInfo, among calendars: [CalendarInfo]) -> Bool {
         func isGoogleAddress(_ text: String) -> Bool {
             let value = text.lowercased()
             return value.hasSuffix("@gmail.com") || value.hasSuffix("@googlemail.com")
         }
+        let sourceName = calendar.sourceName.lowercased()
+        if sourceName.contains("google") { return true }
+        if sourceName == "icloud" { return false }
         let source = calendars.filter { $0.sourceID == calendar.sourceID }
-        return calendar.sourceName.lowercased().contains("google") || isGoogleAddress(calendar.sourceName)
-            || source.contains { isGoogleAddress($0.title) }
+        if isGoogleAddress(sourceName) || source.contains(where: { isGoogleAddress($0.title) }) { return true }
+        // A CalDAV account named by an email address, or whose main calendar is titled with one, is almost
+        // always Google (including Workspace domains): Google names each account’s primary calendar after it.
+        return calendar.isCalDAV && (Invitees.isEmailAddress(calendar.sourceName) || source.contains { Invitees.isEmailAddress($0.title) })
+    }
+
+    /// The Google account emails a calendar’s Apple Calendar account might belong to: its name when that’s an
+    /// email address, otherwise its calendars titled with one (Google names each primary calendar after the account).
+    public static func accountEmails(for calendar: CalendarInfo, among calendars: [CalendarInfo]) -> [String] {
+        if Invitees.isEmailAddress(calendar.sourceName) { return [calendar.sourceName.lowercased()] }
+        var seen = Set<String>()
+        return calendars.filter { $0.sourceID == calendar.sourceID && Invitees.isEmailAddress($0.title) }
+            .map { $0.title.lowercased() }
+            .filter { seen.insert($0).inserted }
     }
 
     /// Finds the Google calendar behind an Apple Calendar (CalDAV) calendar. EventKit doesn’t expose

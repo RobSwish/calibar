@@ -70,9 +70,13 @@ final class GoogleAccount: NSObject, ObservableObject {
 
     /// Connects a Google account. Choosing one that’s already connected refreshes its sign-in.
     @discardableResult
-    func signIn() async -> Bool {
-        guard !isDemo else { return true }
-        guard let configuration, !isSigningIn else { return false }
+    func signIn() async -> Bool { await signIn(hint: nil) != nil }
+
+    /// Connects a Google account and returns its email. `hint` pre-fills Google’s chooser with the account
+    /// a calendar belongs to.
+    func signIn(hint: String?) async -> String? {
+        guard !isDemo else { return emails.first }
+        guard let configuration, !isSigningIn else { return nil }
         isSigningIn = true
         error = nil
         let connect = ConnectWindowState()
@@ -86,12 +90,12 @@ final class GoogleAccount: NSObject, ObservableObject {
             connectState = nil
         }
         // Nothing reaches Google until the person chooses to continue.
-        guard await withCheckedContinuation({ connect.choice = $0 }) else { return false }
+        guard await withCheckedContinuation({ connect.choice = $0 }) else { return nil }
         connect.isWaitingForGoogle = true
         let pkce = PKCE()
         let state = PKCE.randomString(bytes: 16)
         do {
-            let url = configuration.authorizationURL(challenge: pkce.challenge, state: state, prompt: "select_account")
+            let url = configuration.authorizationURL(challenge: pkce.challenge, state: state, loginHint: hint, prompt: "select_account")
             let callback = try await authenticate(url: url, scheme: configuration.callbackScheme)
             let code = try configuration.authorizationCode(from: callback, expectedState: state)
             let signIn = try await GoogleClient.exchange(code: code, verifier: pkce.verifier, configuration: configuration)
@@ -101,24 +105,20 @@ final class GoogleAccount: NSObject, ObservableObject {
             clients[email] = client
             if !emails.contains(email) { emails = (emails + [email]).sorted() }
             calendars[email] = nil
-            Task { await loadCalendarsIfNeeded() }
-            return true
+            await loadCalendarsIfNeeded()
+            return email
         } catch GoogleError.signInCancelled {
-            return false
+            return nil
         } catch {
             self.error = error.localizedDescription
-            return false
+            return nil
         }
     }
 
-    /// Creates a Meet room straight away, connecting Google first if needed, so the link shows in the editor.
-    /// The room belongs to `preferredEmail` when that account is connected, otherwise to the first account.
-    func createMeetLink(preferring preferredEmail: String? = nil) async -> URL? {
+    /// Creates a Meet room straight away with this connected account, so the link shows in the editor.
+    func createMeetLink(as email: String) async -> URL? {
         if isDemo { return URL(string: "https://meet.google.com/abc-defg-hij") }
-        guard isAvailable, !isCreatingMeet else { return nil }
-        if !isSignedIn { guard await signIn() else { return nil } }
-        guard let email = preferredEmail.flatMap({ emails.contains($0) ? $0 : nil }) ?? emails.first,
-              let client = clients[email] else { return nil }
+        guard !isCreatingMeet, let client = clients[email.lowercased()] else { return nil }
         guard await client.account?.canCreateMeetSpaces == true else {
             error = GoogleError.missingPermission.localizedDescription
             return nil
@@ -172,7 +172,7 @@ final class GoogleAccount: NSObject, ObservableObject {
 
     /// The menu-bar panel is a borderless pop-up that hides on outside clicks, so sign-in gets its own window.
     private func makeAnchorWindow(state: ConnectWindowState) -> NSWindow {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 316),
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 330),
                               styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "Connect Google"
         window.titleVisibility = .hidden
@@ -225,6 +225,8 @@ private struct GoogleConnectView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Equal spacers keep the content centred in the window, with matching top and bottom margins.
+            Spacer(minLength: 0)
             HStack(spacing: 14) {
                 CaliBarTile(glyphScale: 0.75)
                     .frame(width: 48, height: 48)
@@ -236,7 +238,6 @@ private struct GoogleConnectView: View {
                     .shadow(color: .black.opacity(0.14), radius: 1.5, y: 1)
             }
             .accessibilityHidden(true)
-            .padding(.top, 40)
 
             Text("Connect Google").font(.system(size: 20, weight: .semibold)).padding(.top, 18)
             Text("Add Meet links and send invitations without leaving CaliBar.")
@@ -256,8 +257,10 @@ private struct GoogleConnectView: View {
                         Text("Continue in the Google window…").foregroundStyle(.secondary)
                     }
                 } else {
-                    Button("Continue with Google", action: proceed)
+                    // CaliBar’s accent, as on the panel’s toggles.
+                    Button("Sign in to Google", action: proceed)
                         .keyboardShortcut(.defaultAction).controlSize(.large)
+                        .buttonStyle(.borderedProminent).tint(.red)
                 }
             }
             .frame(height: 32)
@@ -269,8 +272,8 @@ private struct GoogleConnectView: View {
             Button("Cancel", action: cancel).keyboardShortcut(.cancelAction).opacity(0).accessibilityHidden(true)
         }
         .font(.system(size: 13))
-        .padding(.horizontal, 28).padding(.bottom, 20)
-        .frame(width: 440, height: 316)
+        .padding(.horizontal, 28)
+        .frame(width: 440, height: 330)
     }
 
     private func row(_ symbol: String, _ text: String) -> some View {

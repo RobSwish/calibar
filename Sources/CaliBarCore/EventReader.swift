@@ -101,6 +101,6 @@ public actor EventReader {
                             red: color.redComponent, green: color.greenComponent, blue: color.blueComponent,
                             allowsContentModifications: calendar.allowsContentModifications && !calendar.isSubscribed,
                             supportedAvailabilities: EventAvailability.allCases.filter { calendar.supportedEventAvailabilities.contains($0.mask) },
-                            isDefault: isDefault)
+                            isDefault: isDefault, isCalDAV: calendar.source.sourceType == .calDAV)
     }
 }
